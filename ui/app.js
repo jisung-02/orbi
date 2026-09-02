@@ -180,9 +180,9 @@ const ORB_GEO = { cx: 336, cy: 264 };
 // 바깥 링을 시계방향(위→아래)으로 이어가는 스네이크 배치
 const ORB_ORDER = ["terminal", "ai_term", "pomodoro", "shelf", "monitor", "toggles", "agents", "ai_apps", "format", "feed", "settings"];
 const ORB_RINGS = [
-  { r: 115, aFrom: 172, aTo: 97, cap: 4 },    // 안쪽 링: 아래 끝 → 위
-  { r: 185, aFrom: 99, aTo: 178, cap: 5 },    // 바깥 링: 위 → 아래 (방향 반전)
-  { r: 235, aFrom: 112, aTo: 168, cap: 6 },   // 세 번째 링: 아래 끝 → 위
+  { r: 115, aFrom: 97, aTo: 172, cap: 4 },    // 안쪽 링: 위 → 아래
+  { r: 185, aFrom: 178, aTo: 99, cap: 5 },    // 바깥 링: 아래 → 위 (방향 반전)
+  { r: 235, aFrom: 97, aTo: 172, cap: 6 },    // 세 번째 링: 위 → 아래
 ];
 const ORB_BADGE = { agents: "agents", shelf: "shelf", feed: "feed", pomodoro: "pomodoro" };
 const ORB_LABELS = () => ({
@@ -258,9 +258,17 @@ function buildOrb() {
     const paths = e.payload?.paths || [];
     if (paths.length) invoke("shelf_add", { paths });
   });
-  listen("orb-toggle", (e) => {
-    document.body.classList.toggle("expanded", !!e.payload);
-  });
+  // 확장 상태는 Rust 폴링 결과를 40ms마다 invoke로 확인 (이벤트 채널 이중화)
+  let lastExpanded = null;
+  setInterval(async () => {
+    try {
+      const st = await invoke("orb_state");
+      if (st.expanded !== lastExpanded) {
+        lastExpanded = st.expanded;
+        document.body.classList.toggle("expanded", !!st.expanded);
+      }
+    } catch {}
+  }, 40);
   listen("visibility-changed", async () => {
     S.config = await invoke("get_config");
     buildOrb();
@@ -390,7 +398,17 @@ async function initTerm() {
     if (e.key.toLowerCase() === "w") { invoke("close_popover"); return false; }
     return true;
   });
-  await listen("term-out", (e) => term.write(e.payload));
+  let pendingOut = "";
+  let rafId = null;
+  await listen("term-out", (e) => {
+    pendingOut += e.payload;
+    if (!rafId) {
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (pendingOut) { term.write(pendingOut); pendingOut = ""; }
+      });
+    }
+  });
   await listen("term-exit", () => term.write("\r\n\x1b[90m" + t("term_exit_msg") + "\r\n"));
   try { await invoke("term_init"); } catch (e) { term.write(`\r\n\x1b[31m${e}\r\n`); }
   const fit = () => {

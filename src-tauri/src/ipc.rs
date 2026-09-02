@@ -14,12 +14,8 @@ pub fn quit_app(app: AppHandle) {
 
 /// 오브 윈도우 준비: 입력 차단 상태로 시작하고, 오브 형태일 때만 표시
 #[tauri::command]
-pub fn orb_ready(app: AppHandle, st: tauri::State<AppState>) {
+pub fn orb_ready(_app: AppHandle, _st: tauri::State<AppState>) {
     eprintln!("[orb_ready] orb JS 로드됨");
-    if let Some(win) = app.get_webview_window("orb") {
-        let _ = win.set_ignore_cursor_events(true);
-    }
-    crate::placement::apply_now(&app, &st);
 }
 
 /// 오브를 접고 입력을 다시 차단 (동그라미 클릭 시 팝오버가 팬에 가려지지 않도록)
@@ -27,8 +23,9 @@ pub fn orb_ready(app: AppHandle, st: tauri::State<AppState>) {
 pub fn orb_collapse(app: AppHandle, st: tauri::State<AppState>) {
     *st.orb_expanded.lock() = false;
     let _ = app.emit_to("orb", "orb-toggle", false);
-    if let Some(win) = app.get_webview_window("orb") {
-        let _ = win.set_ignore_cursor_events(true);
+    let panel = crate::panel::get(&st.orb_panel);
+    if panel != 0 {
+        crate::panel::set_ignores_on_main(panel, true);
     }
 }
 
@@ -75,6 +72,11 @@ pub fn set_lang(app: AppHandle, st: tauri::State<AppState>, lang: String) -> Res
 }
 
 // ---- 포모도로 ----
+
+#[tauri::command]
+pub fn pom_snapshot(st: tauri::State<AppState>) -> crate::widgets::pomodoro::PomodoroSnapshot {
+    st.pomodoro.lock().snapshot()
+}
 
 #[tauri::command]
 pub fn pom_start(app: AppHandle, st: tauri::State<AppState>, focus_min: Option<u64>, break_min: Option<u64>) {
@@ -430,6 +432,15 @@ pub fn close_current_popover(app: &AppHandle) {
 #[tauri::command]
 pub fn close_popover(app: AppHandle) {
     close_current_popover(&app);
+}
+
+/// 오브 확장 상태 + 숨김 목록 (JS 폴링용 — 이벤트 전달 불안정 문제 우회)
+#[tauri::command]
+pub fn orb_state(st: tauri::State<AppState>) -> serde_json::Value {
+    serde_json::json!({
+        "expanded": *st.orb_expanded.lock(),
+        "hidden": *st.cfg.lock().hidden_widgets,
+    })
 }
 
 #[tauri::command]

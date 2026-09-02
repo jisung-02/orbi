@@ -5,6 +5,7 @@ mod app;
 mod config;
 mod i18n;
 mod ipc;
+mod panel;
 mod placement;
 mod platform;
 mod widgets;
@@ -31,6 +32,7 @@ fn main() {
             ipc::set_lang,
             ipc::set_widget_visible,
             ipc::get_config,
+            ipc::pom_snapshot,
             ipc::pom_start,
             ipc::pom_pause,
             ipc::pom_resume,
@@ -63,14 +65,30 @@ fn main() {
             ipc::open_popover,
             ipc::orb_ready,
             ipc::orb_collapse,
+            ipc::orb_state,
             ipc::popover_ready,
         ])
         .setup(|app| {
-                        // 오버레이 유틸리티이므로 Dock 아이콘/앱 전환기에서 숨김
+            use tauri::Manager;
+            // 오브 NSPanel 생성 (메인 스레드에서 직접 — Starboard 방식)
+            if let Some(orb) = app.get_webview_window("orb") {
+                if let (Ok(view), Ok(twin)) = (orb.ns_view(), orb.ns_window()) {
+                    let rect = crate::platform::RectF { x: 1082.0, y: 600.0, w: 380.0, h: 300.0 };
+                    let addr = crate::panel::create_on_main(view, rect);
+                    crate::panel::set(&app.state::<app::AppState>().orb_panel, addr);
+                    eprintln!("[setup] NSPanel addr={addr}");
+                    // 웹뷰가 패널로 이동했으므로 tao 윈도우 숨김
+                    unsafe {
+                        let nil: *mut objc2::runtime::AnyObject = std::ptr::null_mut();
+                        let _: () = objc2::msg_send![twin as *mut objc2::runtime::AnyObject, orderOut: nil];
+                    }
+                }
+            }
+
+            // 오버레이 유틸리티이므로 Dock 아이콘/앱 전환기에서 숨김
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             // 전역 단축키: ⌘⌥W = 열려 있는 팝오버 닫기 (다른 앱에 포커스가 있어도 동작)
-            use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
@@ -115,12 +133,7 @@ use tauri_plugin_global_shortcut::ShortcutState;
             }
             // 시작 직후 즉시 1회 배치 (메인 스레드)
             {
-                let h_call = handle.clone();
-                let h_inner = handle.clone();
-                let _ = h_call.run_on_main_thread(move || {
-                    let st = h_inner.state::<app::AppState>();
-                    placement::apply_now(&h_inner, &st);
-                });
+
             }
             Ok(())
         })

@@ -2,6 +2,7 @@
 //! AppKit 좌표(좌하단 원점) 기준.
 
 use crate::platform::{self, RectF};
+use tauri::Manager;
 
 pub const BOTTOM_MARGIN: f64 = 6.0;
 pub const EDGE_MARGIN: f64 = 8.0; // 화면 가장자리 여백
@@ -13,11 +14,7 @@ pub const ORB_H: f64 = 300.0;
 pub const ORB_CX: f64 = 336.0;
 pub const ORB_CY: f64 = 36.0;
 /// 마우스가 이 반경 안으로 들어오면 펼침
-pub const ORB_HOT_R: f64 = 70.0;
-
-pub fn active_label() -> &'static str {
-    "orb"
-}
+pub const ORB_HOT_R: f64 = 85.0;
 
 /// 오브 호버 판정: 마우스가 오브 중심 핫존 안인지
 pub fn orb_in_hot(rect: RectF, mx: f64, my: f64) -> bool {
@@ -41,75 +38,31 @@ pub fn compute(screen: &RectF) -> RectF {
     }
 }
 
-pub fn apply_now(app: &tauri::AppHandle, st: &tauri::State<crate::app::AppState>) {
-    use tauri::{Emitter, LogicalPosition, LogicalSize, Manager};
-
+pub fn apply_now(st: &tauri::State<crate::app::AppState>) {
     let screen = platform::screen_containing_mouse().unwrap_or_else(|| {
         let (w, h) = platform::main_screen();
         RectF { x: 0.0, y: 0.0, w, h }
     });
     let rect = compute(&screen);
 
-    let changed = {
-        let mut cur = st.orb_rect.lock();
-        let changed = match *cur {
-            Some(r) => {
-                (r.x - rect.x).abs() >= 0.5
-                    || (r.y - rect.y).abs() >= 0.5
-                    || (r.w - rect.w).abs() >= 0.5
-            }
-            None => true,
-        };
-        if changed {
-            *cur = Some(rect);
-        }
-        changed
-    };
+    // 호버 판정/팝오버 앵커가 읽는 현재 오브 프레임
+    *st.orb_rect.lock() = Some(rect);
 
-    if let Some(win) = app.get_webview_window(active_label()) {
-        // 전체화면/스페이스 전환 후에도 오버레이가 유지되도록 매 틱 재단언 (메인 큐)
-        if let Ok(ptr) = win.ns_window() {
-            // 1000 = 스크린세이버급: 전체화면 앱 위에도 표시
-            platform::win::ensure_visible_on_main(ptr, 1000);
-        }
-        if changed {
-            let _ = win.set_size(LogicalSize::new(rect.w, rect.h));
-            let pos = LogicalPosition::new(rect.x, screen.h - rect.y - rect.h);
-            let _ = win.set_position(pos);
-            let _ = app.emit_to(active_label(), "orb-rect", rect);
-        }
+    // 전체화면/스페이스 전환 후에도 유지되도록 매 틱 패널에 적용 (메인 큐)
+    let panel = crate::panel::get(&st.orb_panel);
+    if panel == 0 {
+        return;
     }
-}
-
-/// 오브 호버 폴링(60ms): 마우스가 오브에 접근하면 입력을 켜고 펼침, 벗어나면 접음
-pub fn orb_loop(app: tauri::AppHandle) {
-    use tauri::{Emitter, Manager};
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        let st = app.state::<crate::app::AppState>();
-        let Some(rect) = *st.orb_rect.lock() else { continue };
-        let (mx, my) = platform::mouse_location();
-        let expanded = *st.orb_expanded.lock();
-        let want_expand = !expanded && orb_in_hot(rect, mx, my);
-        let want_collapse = expanded && !orb_in_window(rect, mx, my);
-        if !want_expand && !want_collapse {
-            continue;
-        }
-        let expand_now = want_expand; // true=펼침, false=접음
-        if let Some(win) = app.get_webview_window("orb") {
-            let _ = win.set_ignore_cursor_events(!expand_now);
-            let _ = app.emit_to("orb", "orb-toggle", expand_now);
-        }
-        *st.orb_expanded.lock() = expand_now;
-    }
+    crate::panel::on_main_async(move || {
+        crate::panel::apply_overlay(panel, rect, 1000);
+    });
 }
 
 /// 배치 폴링: 커서 화면 이동/디스플레이 구성 변경 시 오브 위치 갱신
 pub fn placement_loop(app: tauri::AppHandle) {
-    use tauri::Manager;
-    loop {
+        loop {
         let st = app.state::<crate::app::AppState>();
-        apply_now(&app, &st);
+        apply_now(&st);
         // 화면이 여러 개면 커서 추적을 빠르게 (0.7s), 하나면 1.5s
         let multi = platform::all_screens().len() > 1;
         std::thread::sleep(std::time::Duration::from_millis(if multi { 700 } else { 1500 }));
@@ -155,5 +108,40 @@ mod tests {
         assert!(orb_in_window(rect, cx - 100.0, cy + 100.0));
         assert!(!orb_in_window(rect, rect.x - 1.0, cy));
         assert!(!orb_in_window(rect, cx, rect.y + rect.h + 1.0));
+    }
+}
+
+/// 오브 호버 폴링(25ms): 마우스가 오브에 접근하면 입력을 켜고 펼침,
+/// 팬 영역을 250ms 이상 벗어나면 접는다
+pub fn orb_loop(app: tauri::AppHandle) {
+    use tauri::Manager;
+    let mut left_at: Option<std::time::Instant> = None;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        let st = app.state::<crate::app::AppState>();
+        let Some(rect) = *st.orb_rect.lock() else { continue };
+        let (mx, my) = platform::mouse_location();
+        let expanded = *st.orb_expanded.lock();
+        let want_expand = !expanded && orb_in_hot(rect, mx, my);
+        let want_collapse = expanded
+            && !orb_in_window(rect, mx, my)
+            && left_at
+                .map(|t| t.elapsed() >= std::time::Duration::from_millis(250))
+                .unwrap_or(true);
+        if !want_expand && !want_collapse {
+            continue;
+        }
+        let expand_now = want_expand;
+        if !expand_now {
+            left_at = Some(std::time::Instant::now());
+        } else {
+            left_at = None;
+        }
+        let panel = crate::panel::get(&st.orb_panel);
+        if panel != 0 {
+            crate::panel::set_ignores_on_main(panel, !expand_now);
+        }
+        tauri::Emitter::emit_to(&app, "orb", "orb-toggle", expand_now).ok();
+        *st.orb_expanded.lock() = expand_now;
     }
 }

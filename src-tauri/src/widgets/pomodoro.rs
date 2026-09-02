@@ -136,8 +136,17 @@ impl PomodoroState {
 pub fn persist(app: &AppHandle) {
     use tauri::Manager;
     if let Some(st) = app.try_state::<crate::app::AppState>() {
+        let data = st.pomodoro.lock().persisted();
+        persist_data(app, data);
+    }
+}
+
+/// 락 없이 데이터를 받아 저장 (데드락 방지용 분리)
+pub fn persist_data(app: &AppHandle, data: PersistedPom) {
+    use tauri::Manager;
+    if let Some(st) = app.try_state::<crate::app::AppState>() {
         let mut cfg = st.cfg.lock();
-        cfg.pomodoro = Some(st.pomodoro.lock().persisted());
+        cfg.pomodoro = Some(data);
         cfg.save();
     }
 }
@@ -170,6 +179,7 @@ pub fn tick_loop(app: AppHandle) {
     loop {
         std::thread::sleep(Duration::from_secs(1));
         let mut phase_change: Option<(String, String)> = None;
+        let mut need_persist = false;
         let snapshot;
         {
             let st = app.state::<crate::app::AppState>();
@@ -186,13 +196,18 @@ pub fn tick_loop(app: AppHandle) {
                             _ => Phase::Focus,
                         };
                         phase_change = Some(switch_to(&mut p, next, &lang));
-                        persist(&app);
+                        need_persist = true;
                     }
                 }
             }
             snapshot = p.snapshot();
         }
         let _ = app.emit("pomodoro", &snapshot);
+        // 락 해제 후 저장 (p 가드 홀드 중 persist 호출 시 재락 → 데드락)
+        if need_persist {
+            let data = app.state::<crate::app::AppState>().pomodoro.lock().persisted();
+            crate::widgets::pomodoro::persist_data(&app, data);
+        }
         if let Some((title, body)) = phase_change {
             crate::widgets::feed::push(&app, "⏱", &title, &body);
             crate::platform::notify(&title, &body);

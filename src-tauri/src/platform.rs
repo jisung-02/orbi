@@ -322,25 +322,6 @@ pub mod win {
     pub struct NsWinPtr(pub *mut c_void);
     unsafe impl Send for NsWinPtr {}
 
-    /// 오버레이 자가 치료: 온스크린이 아니면 메인 큐에서 다시 띄우고
-    /// 레벨 지정 + 모든 스페이스/전체화면 고정을 재단언한다
-    pub fn ensure_visible_on_main(ptr: *mut c_void, level: i64) {
-        let ptr = NsWinPtr(ptr);
-        on_main_async(move || unsafe {
-            let p = ptr;
-            if p.0.is_null() {
-                return;
-            }
-            let on: bool = msg_send![p.0 as *mut AnyObject, isVisible];
-            if !on {
-                let _: () = msg_send![p.0 as *mut AnyObject, orderFrontRegardless];
-            }
-            let _: () = msg_send![p.0 as *mut AnyObject, setLevel: level];
-            let behavior: u64 = (1u64 << 0) | (1u64 << 8);
-            let _: () = msg_send![p.0 as *mut AnyObject, setCollectionBehavior: behavior];
-        });
-    }
-
     pub unsafe fn set_level(ptr: *mut c_void, level: i64) {
         if ptr.is_null() {
             return;

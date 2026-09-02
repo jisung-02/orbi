@@ -17,6 +17,7 @@ serde_yaml = "0.9"
 toml = "0.8"
 sysinfo = { version = "0.33", default-features = false, features = ["system", "network", "multithread"] }
 portable-pty = "0.9"
+futures-lite = "2"
 core-foundation = "0.10"
 core-graphics = "0.24"
 dirs = "6"

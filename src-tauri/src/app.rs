@@ -25,6 +25,8 @@ pub struct AppState {
     pub popover: Mutex<Option<String>>,
     /// 오브 펼침 상태 (orb_loop와 orb_collapse 커맨드가 공유)
     pub orb_expanded: Mutex<bool>,
+    /// 오브 NSPanel 포인터 (usize 주소, 0 = 없음)
+    pub orb_panel: crate::panel::SharedPanel,
     /// 터미널 PTY 세션 (팝오버를 닫아도 유지)
     pub term: crate::widgets::terminal::SharedSession,
 }
@@ -45,6 +47,7 @@ impl AppState {
             cfg: Mutex::new(cfg),
             orb_rect: Mutex::new(None),
             pomodoro: Mutex::new(pom),
+            orb_panel: crate::panel::store(),
             feed: Mutex::new(Vec::new()),
             shelf: Mutex::new(Vec::new()),
             caffeinate: Mutex::new(None),

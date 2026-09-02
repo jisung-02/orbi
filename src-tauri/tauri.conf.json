@@ -17,6 +17,7 @@
         "height": 300,
         "x": 1082,
         "y": 600,
+        "visibleOnAllWorkspaces": true,
         "decorations": false,
         "transparent": true,
         "shadow": false,
@@ -32,8 +33,6 @@
   "bundle": {
     "active": false,
     "targets": [],
-    "icon": [
-      "icons/icon.png"
-    ]
+    "icon": ["icons/icon.png"]
   }
 }
