@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Debug, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
+    #[default]
     Idle,
     Focus,
     Break,
@@ -47,12 +48,6 @@ pub struct PomodoroState {
     pub focus_secs: u64,
     pub break_secs: u64,
     pub rounds_done: u32,
-}
-
-impl Default for Phase {
-    fn default() -> Self {
-        Phase::Idle
-    }
 }
 
 impl PomodoroState {
@@ -159,11 +154,11 @@ fn switch_to(state: &mut PomodoroState, phase: Phase, lang: &str) -> (String, St
     state.paused = false;
     match phase {
         Phase::Focus => (
-            crate::i18n::tr(&lang, "집중 시작", "Focus started").to_string(),
+            crate::i18n::tr(lang, "집중 시작", "Focus started").to_string(),
             crate::i18n::fmt(lang, "{}분 집중!", "Focus for {} min!", &[&(secs / 60)]),
         ),
         Phase::Break => (
-            crate::i18n::tr(&lang, "휴식 시작", "Break started").to_string(),
+            crate::i18n::tr(lang, "휴식 시작", "Break started").to_string(),
             crate::i18n::fmt(lang, "{}분 휴식!", "Break for {} min!", &[&(secs / 60)]),
         ),
         Phase::Idle => unreachable!(),

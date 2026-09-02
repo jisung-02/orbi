@@ -365,8 +365,7 @@ pub fn term_launch_cli(app: AppHandle, st: tauri::State<AppState>, program: Stri
         return Err("허용되지 않은 프로그램".into());
     }
     crate::widgets::terminal::ensure(&app, &st)?;
-    crate::widgets::terminal::write(&st, &format!("{program}
-"))
+    crate::widgets::terminal::write(&st, &format!("{program}\r"))
 }
 
 /// GUI 앱 실행 (화이트리스트)
@@ -440,11 +439,20 @@ pub fn open_popover(
     widget: String,
     tile_x: f64,
 ) -> Result<(), String> {
-    // 이미 열려 있으면 닫기(토글)
+    // 이미 열려 있으면 닫기(토글). 창이 완전히 닫힌 뒤 새 창을 만든다 (경합 방지)
     if let Some(prev) = st.popover.lock().clone() {
-        let _ = app.get_webview_window(&prev).map(|w| w.close());
+        let was_same = prev == format!("popover-{widget}");
+        if let Some(w) = app.get_webview_window(&prev) {
+            let _ = w.close();
+        }
+        for _ in 0..50 {
+            if app.get_webview_window(&prev).is_none() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
         *st.popover.lock() = None;
-        if prev == format!("popover-{widget}") {
+        if was_same {
             return Ok(());
         }
     }
@@ -496,9 +504,9 @@ pub fn open_popover(
         let y = orb.map(|b| b.y + 96.0).unwrap_or(90.0);
         let rect = crate::platform::RectF { x, y, w, h };
         let ptr = crate::platform::win::NsWinPtr(ptr);
-        let _ = app.run_on_main_thread(move || unsafe {
+        crate::platform::on_main_async(move || unsafe {
             let p = ptr;
-            crate::platform::win::set_level(p.0, 1001); // 오브(1000)보다 위
+            crate::platform::win::set_level(p.0, 1001); // 오브(1000)보다 위, 전체화면 위
             crate::platform::win::pin_all_spaces(p.0);
             crate::platform::win::set_frame(p.0, rect);
         });
@@ -517,7 +525,11 @@ pub fn open_popover(
                 let _ = w.close();
             }
             if let Some(st) = app2.try_state::<AppState>() {
-                *st.popover.lock() = None;
+                // 새 팝오버가 이미 열려 있으면 상태를 지우지 않는다
+                let mut cur = st.popover.lock();
+                if cur.as_deref() == Some(&label2) {
+                    *cur = None;
+                }
             }
         }
     });
@@ -535,7 +547,7 @@ pub fn popover_ready(app: AppHandle) {
             if let Some(win) = app.get_webview_window(&label) {
                 if let Ok(ptr) = win.ns_window() {
                     let ptr = crate::platform::win::NsWinPtr(ptr);
-                    let _ = app.run_on_main_thread(move || unsafe {
+                    crate::platform::on_main_async(move || unsafe {
                         let p = ptr;
                         crate::platform::win::pin_all_spaces(p.0);
                     });

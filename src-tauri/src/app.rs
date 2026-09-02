@@ -33,9 +33,11 @@ impl AppState {
     pub fn new() -> Self {
         let cfg = Config::load();
         // 포모도로 초기값: 설정값 + 저장된 실행 상태 복원
-        let mut pom = crate::widgets::pomodoro::PomodoroState::default();
-        pom.focus_secs = cfg.focus_min.max(1) * 60;
-        pom.break_secs = cfg.break_min.max(1) * 60;
+        let mut pom = crate::widgets::pomodoro::PomodoroState {
+            focus_secs: cfg.focus_min.max(1) * 60,
+            break_secs: cfg.break_min.max(1) * 60,
+            ..Default::default()
+        };
         if let Some(pp) = &cfg.pomodoro {
             pom.restore_from(pp);
         }

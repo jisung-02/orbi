@@ -23,6 +23,7 @@ const STR = {
     round: "라운드", waiting: "대기 중", paused_txt: "일시정지 · ",
     presets: "프리셋", start: "시작", pause: "일시정지", resume: "재개", reset: "리셋",
     recent_cpu: "CPU 최근 기록", collecting: "수집 중…", disk_free: "디스크 여유",
+    cpu: "CPU", memory: "메모리",
     appearance: "모양 전환", network: "네트워크", device_none: "장치 없음",
     system_volume: "시스템 볼륨", stay_awake: "잠금 방지", keep_display: "화면 꺼짐 방지",
     perm_note: "일부 토글은 첫 사용 시 자동화 권한을 요청합니다.",
@@ -45,6 +46,9 @@ const STR = {
     empty_shelf: "비었음", copied: "복사됨", copy_fail: "복사 실패",
     paste_fail: "클립보드 읽기 실패", xterm_fail: "xterm 로드 실패",
     widgets_visible: "위젯 표시", always_on: "설정은 항상 표시",
+    installed: "설치됨 · 터미널에서 실행", term_note: "내장 터미널에서 실행되며 닫아도 계속 돌아갑니다.",
+    apps_note: "기본 브라우저/앱으로 실행됩니다.", fmt_placeholder: "붙여넣기 (⌘V) 또는 직접 입력…",
+    moved: "이동", failed: "실패", ready: "준비 중",
   },
   en: {
     form: "Form", orb: "⬤ Orb", bar: "▬ Bar", language: "Language", korean: "한국어", english: "English",
@@ -59,6 +63,7 @@ const STR = {
     round: "rounds", waiting: "Idle", paused_txt: "Paused · ",
     presets: "Presets", start: "Start", pause: "Pause", resume: "Resume", reset: "Reset",
     recent_cpu: "CPU history", collecting: "Collecting…", disk_free: "Disk free",
+    cpu: "CPU", memory: "Memory",
     appearance: "Appearance", network: "Network", device_none: "No device",
     system_volume: "System volume", stay_awake: "Stay awake", keep_display: "Keep display on",
     perm_note: "Some toggles ask for Automation permission on first use.",
@@ -81,6 +86,9 @@ const STR = {
     empty_shelf: "Empty", copied: "Copied", copy_fail: "Copy failed",
     paste_fail: "Clipboard read failed", xterm_fail: "xterm load failed",
     widgets_visible: "Show widgets", always_on: "Settings always visible",
+    installed: "Installed · runs in terminal", term_note: "Runs in the built-in terminal; keeps running when closed.",
+    apps_note: "Launches the default app.", fmt_placeholder: "Paste (⌘V) or type…",
+    moved: "Moved", failed: "failed", ready: "Loading…",
   },
 };
 const t = (k) => {
@@ -407,7 +415,7 @@ function setTermFont(term, size) {
   }
 }
 
-function popEmpty() { return `<h2>준비 중</h2>`; }
+function popEmpty() { return `<h2>${t("ready")}</h2>`; }
 
 /* --- 포모도로 --- */
 function popPomodoro() {
@@ -455,6 +463,10 @@ function popMonitor() {
       <div class="lbl">${t("recent_cpu")}</div>
       <canvas id="cpu-spark" width="272" height="44"></canvas>
     </div>
+    <div class="sec">
+      <div class="lbl">${t("memory") ?? "메모리"} ${Math.round(s.ram_pct)}%</div>
+      <div class="meter"><div class="${ramCls}" style="width:${Math.min(s.ram_pct, 100)}%"></div></div>
+    </div>
     <div class="stat-grid" style="margin-bottom:10px;">
       <div class="sec"><div class="stat-val">${Math.round(s.cpu)}<span style="font-size:12px">%</span></div><div class="stat-sub">${t("cpu")}</div></div>
       <div class="sec"><div class="stat-val">${s.ram_used_gb}<span style="font-size:12px">G</span></div><div class="stat-sub">RAM / ${s.ram_total_gb}G</div></div>
@@ -462,8 +474,6 @@ function popMonitor() {
     </div>
     <div class="sec">
       <div class="lbl">${t("network")} ↓${s.net_rx_kbs} · ↑${s.net_tx_kbs} KB/s</div>
-      <div class="meter"><div class="${ramCls}" style="width:${Math.min(s.ram_pct, 100)}%"></div></div>
-      <div class="lbl" style="margin-top:10px;">네트워크 ↓${s.net_rx_kbs} · ↑${s.net_tx_kbs} KB/s</div>
       <div class="meter"><div style="width:${Math.min((s.net_rx_kbs + s.net_tx_kbs) / 10, 100)}%"></div></div>
       <div class="lbl" style="margin-top:10px;">${t("uptime")} ${esc(s.uptime)} · ${t("disk_free")} ${s.disk_free_gb}G</div>
     </div>`;
@@ -483,31 +493,31 @@ function drawSpark() {
     const y = c.height - 4 - (Math.min(v, 100) / 100) * (c.height - 8);
     i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   });
-  ctx.strokeStyle = "#7daaff";
+  ctx.strokeStyle = "#e8eaf0";
   ctx.lineWidth = 1.6;
   ctx.stroke();
   ctx.lineTo((hist.length - 1) * step, c.height);
   ctx.lineTo(0, c.height);
   ctx.closePath();
-  ctx.fillStyle = "rgba(125, 170, 255, 0.12)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.10)";
   ctx.fill();
 }
 
 /* --- 토글 --- */
 function popToggles() {
-  const t = S.toggles;
-  if (!t) return `<h2>${IC.toggles} ${t("toggles")}</h2><div class="empty">…</div>`;
+  const tg = S.toggles;
+  if (!tg) return `<h2>${IC.toggles} ${t("toggles")}</h2><div class="empty">…</div>`;
   const sw = (key, label, sub, avail = true) => `
     <div class="row">
       <div><div class="rl">${label}</div><div class="rs">${sub}</div></div>
-      <div class="switch ${t[key] ? "on" : ""} ${avail ? "" : "unavail"}" data-act="tg_${key}" ${avail ? "" : "data-off"}></div>
+      <div class="switch ${tg[key] ? "on" : ""} ${avail ? "" : "unavail"}" data-act="tg_${key}" ${avail ? "" : "data-off"}></div>
     </div>`;
   return `
     <h2>${IC.toggles} ${t("toggles")}</h2>
     <div class="sec">
       ${sw("dark", t("dark"), t("appearance"))}
-      ${sw("wifi", "Wi-Fi", t.wifi_available ? t("network") : t("device_none"), t.wifi_available)}
-      ${sw("bt", "Bluetooth", t.bt_available ? "blueutil" : "brew install blueutil", t.bt_available)}
+      ${sw("wifi", "Wi-Fi", tg.wifi_available ? t("network") : t("device_none"), tg.wifi_available)}
+      ${sw("bt", "Bluetooth", tg.bt_available ? "blueutil" : "brew install blueutil", tg.bt_available)}
       ${sw("mute", t("mute"), t("system_volume"))}
       ${sw("caffeine", t("stay_awake"), t("keep_display"))}
     </div>
@@ -576,7 +586,7 @@ function popFormat() {
           <div data-f="auto" class="on">${t("auto")}</div><div data-f="json">JSON</div><div data-f="yaml">YAML</div><div data-f="toml">TOML</div>
         </div>
       </div>
-      <textarea id="fmt-src" rows="7" placeholder="붙여넣기 (⌘V) 또는 직접 입력…" spellcheck="false"></textarea>
+      <textarea id="fmt-src" rows="7" placeholder="${t("fmt_placeholder")}" spellcheck="false"></textarea>
       <div class="btns">
         <button class="primary" data-act="fmt_pretty">${t("pretty")}</button>
         <button data-act="fmt_min">${t("minify")}</button>
@@ -606,7 +616,7 @@ function popFeed() {
           <div class="li-title">${esc(f.title)}</div>
           <div class="li-sub">${esc(f.body)}</div>
         </div>
-        <div class="rs">${new Date(f.ts).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</div>
+        <div class="rs">${new Date(f.ts).toLocaleTimeString((S.config?.lang === "en") ? "en-US" : "ko-KR", { hour: "2-digit", minute: "2-digit" })}</div>
       </div>`).join("")
     : `<div class="empty">${t("feed_empty")}</div>`;
   return `
@@ -697,8 +707,8 @@ function bindPopActions() {
           case act === "term_font_down": if (TERM) setTermFont(TERM, Math.max(9, TERM.options.fontSize - 1)); break;
           case act === "sh_rm": invoke("shelf_remove", { idx: i }); break;
           case act === "sh_clear": invoke("shelf_clear"); break;
-          case act === "sh_move1": { const [ok, fail] = await invoke("shelf_move_to", { idx: i }); toast(`이동 ${ok} · 실패 ${fail}`); break; }
-          case act === "sh_move_all": { const [ok, fail] = await invoke("shelf_move_to", {}); toast(`이동 ${ok} · 실패 ${fail}`); break; }
+          case act === "sh_move1": { const [ok, fail] = await invoke("shelf_move_to", { idx: i }); toast(`${t("moved")} ${ok} · ${t("failed")} ${fail}`); break; }
+          case act === "sh_move_all": { const [ok, fail] = await invoke("shelf_move_to", {}); toast(`${t("moved")} ${ok} · ${t("failed")} ${fail}`); break; }
           case act === "fmt_pretty": runFormat(true, null); break;
           case act === "fmt_min": runFormat(false, null); break;
           case act === "fmt_paste": {

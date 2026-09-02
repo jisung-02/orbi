@@ -50,29 +50,34 @@ pub fn apply_now(app: &tauri::AppHandle, st: &tauri::State<crate::app::AppState>
     });
     let rect = compute(&screen);
 
-    {
+    let changed = {
         let mut cur = st.orb_rect.lock();
-        if let Some(r) = *cur {
-            if (r.x - rect.x).abs() < 0.5
-                && (r.y - rect.y).abs() < 0.5
-                && (r.w - rect.w).abs() < 0.5
-            {
-                return;
+        let changed = match *cur {
+            Some(r) => {
+                (r.x - rect.x).abs() >= 0.5
+                    || (r.y - rect.y).abs() >= 0.5
+                    || (r.w - rect.w).abs() >= 0.5
             }
+            None => true,
+        };
+        if changed {
+            *cur = Some(rect);
         }
-        *cur = Some(rect);
-    }
+        changed
+    };
 
-    // 전체화면/스페이스 전환 후에도 오버레이가 유지되도록 매 틱 레벨+컬렉션 재단언 (메인 큐)
     if let Some(win) = app.get_webview_window(active_label()) {
-        let _ = win.set_size(LogicalSize::new(rect.w, rect.h));
-        let pos = LogicalPosition::new(rect.x, screen.h - rect.y - rect.h);
-        let _ = win.set_position(pos);
+        // 전체화면/스페이스 전환 후에도 오버레이가 유지되도록 매 틱 재단언 (메인 큐)
         if let Ok(ptr) = win.ns_window() {
             // 1000 = 스크린세이버급: 전체화면 앱 위에도 표시
             platform::win::ensure_visible_on_main(ptr, 1000);
         }
-        let _ = app.emit_to(active_label(), "orb-rect", rect);
+        if changed {
+            let _ = win.set_size(LogicalSize::new(rect.w, rect.h));
+            let pos = LogicalPosition::new(rect.x, screen.h - rect.y - rect.h);
+            let _ = win.set_position(pos);
+            let _ = app.emit_to(active_label(), "orb-rect", rect);
+        }
     }
 }
 
@@ -105,7 +110,6 @@ pub fn placement_loop(app: tauri::AppHandle) {
     loop {
         let st = app.state::<crate::app::AppState>();
         apply_now(&app, &st);
-        drop(st);
         // 화면이 여러 개면 커서 추적을 빠르게 (0.7s), 하나면 1.5s
         let multi = platform::all_screens().len() > 1;
         std::thread::sleep(std::time::Duration::from_millis(if multi { 700 } else { 1500 }));

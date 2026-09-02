@@ -20,15 +20,16 @@ pub struct Stats {
 
 pub fn monitor_loop(app: AppHandle) {
     // pmset/df 호출이 무거우므로 배터리·디스크는 15초 캐시
-    let mut slow_cache: Option<(std::time::Instant, Option<(u32, bool)>, f64)> = None;
+    type BattCache = Option<(std::time::Instant, Option<(u32, bool)>, f64)>;
+    let mut slow_cache: BattCache = None;
     loop {
         std::thread::sleep(Duration::from_secs(2));
         let (battery, disk_free) = match &slow_cache {
-            Some((t, b, d)) if t.elapsed() < Duration::from_secs(15) => (b.clone(), *d),
+            Some((t, b, d)) if t.elapsed() < Duration::from_secs(15) => (*b, *d),
             _ => {
                 let b = crate::platform::battery();
                 let d = crate::platform::disk_free_gb();
-                slow_cache = Some((std::time::Instant::now(), b.clone(), d));
+                slow_cache = Some((std::time::Instant::now(), b, d));
                 (b, d)
             }
         };
@@ -45,7 +46,7 @@ pub fn monitor_loop(app: AppHandle) {
                 let mut net = st.net.lock();
                 net.refresh(true);
                 let (mut rx, mut tx) = (0u64, 0u64);
-                for (_name, data) in net.iter() {
+                for data in net.values() {
                     rx += data.received();
                     tx += data.transmitted();
                 }

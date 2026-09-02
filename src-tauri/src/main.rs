@@ -67,7 +67,7 @@ fn main() {
         ])
         .setup(|app| {
                         // 오버레이 유틸리티이므로 Dock 아이콘/앱 전환기에서 숨김
-            let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             // 전역 단축키: ⌘⌥W = 열려 있는 팝오버 닫기 (다른 앱에 포커스가 있어도 동작)
             use tauri::Manager;
