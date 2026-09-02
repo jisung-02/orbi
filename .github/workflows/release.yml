@@ -1,0 +1,131 @@
+name: Release
+
+# 시맨틱 태그 푸시 시 배포:
+#   v1.2.3        → 안정본: GitHub Release + 탭의 dock-util.rb 갱신 (brew upgrade로 배포)
+#   v1.2.3-beta   → 프리릴리스: GitHub Release(사전표시) + 버전 붙은 dock-util@1.2.3-beta 추가 (latest 아님)
+#   v1.2.3-rc.1   → 위와 동일 (beta/rc 등 임의 접미사 모두 프리릴리스 취급)
+#
+# 필요 설정 (저장소 Settings):
+#   - Secrets.TAP_TOKEN : Homebrew 탭 저장소에 push 가능한 PAT (repo 스코프)
+#   - Variables.TAP_REPOSITORY : (선택) 탭 저장소, 기본값 <owner>/homebrew-tap
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14 # Apple Silicon
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      prerelease: ${{ steps.ver.outputs.prerelease }}
+      sha256: ${{ steps.pkg.outputs.sha256 }}
+      asset: ${{ steps.pkg.outputs.asset }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 태그에서 버전 추출 + 안정/프리릴리스 판정
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rust 설치
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust 캐시
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 앱에 버전 주입
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          python3 - <<EOF
+          import json
+          p = "src-tauri/tauri.conf.json"
+          c = json.load(open(p))
+          c["version"] = "$VERSION"
+          json.dump(c, open(p, "w"), indent=2, ensure_ascii=False)
+          EOF
+          sed -i '' "0,/^version = /s//version = \"$VERSION\"/" src-tauri/Cargo.toml
+
+      - name: 빌드 (release)
+        run: cargo build --release
+        working-directory: src-tauri
+
+      - name: 패키징 + 체크섬
+        id: pkg
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          DIR="dock-util-$VERSION"
+          mkdir -p "$DIR"
+          cp src-tauri/target/release/dock-util "$DIR/"
+          cp README.md "$DIR/"
+          ASSET="dock-util-$VERSION-aarch64-macos.tar.gz"
+          tar -czf "$ASSET" "$DIR"
+          SHA=$(shasum -a 256 "$ASSET" | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: dock-util-*.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+
+      - name: GitHub Release 생성
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          ASSET: ${{ needs.build.outputs.asset }}
+        run: |
+          FLAGS=""
+          [ "$PRERELEASE" = "true" ] && FLAGS="--prerelease"
+          gh release create "v$VERSION" "$ASSET" $FLAGS \
+            --title "dock-util v$VERSION" \
+            --generate-notes
+
+      - name: Homebrew 탭 갱신
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+          TAP_REPOSITORY: ${{ vars.TAP_REPOSITORY }}
+          GH_REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+          ASSET: ${{ needs.build.outputs.asset }}
+        run: |
+          set -euo pipefail
+          TAP_REPOSITORY="${TAP_REPOSITORY:-$(echo "$GH_REPOSITORY" | cut -d/ -f1)/homebrew-tap}"
+
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPOSITORY}.git" tap
+          bash scripts/gen-formula.sh \
+            "$VERSION" "$SHA256" "$ASSET" "$GH_REPOSITORY" \
+            tap/Formula $([ "$PRERELEASE" = "true" ] && echo --prerelease)
+
+          cd tap
+          git add Formula
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -m "dock-util ${VERSION}"
+          git push

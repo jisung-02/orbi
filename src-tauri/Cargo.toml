@@ -1,0 +1,34 @@
+[package]
+name = "dock-util"
+version = "0.1.0"
+description = "macOS Dock-side glass widget bar"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+tauri-plugin-global-shortcut = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+sysinfo = { version = "0.33", default-features = false, features = ["system", "network", "multithread"] }
+portable-pty = "0.9"
+core-foundation = "0.10"
+core-graphics = "0.24"
+dirs = "6"
+rfd = "0.15"
+parking_lot = "0.12"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true
+codegen-units = 1
