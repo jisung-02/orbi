@@ -104,6 +104,30 @@ ui/               # 정적 프런트엔드 (vanilla JS + xterm.js 벤더링)
 배치 폴링(1.5초) 안에 자동 반영됩니다. 독은 그 화면 위에 있을 때만 실측에 사용하며, 팝오버 클램프도
 해당 화면 경계 안에서 이뤄집니다.
 
+## 배포 (GitHub Actions → Homebrew 탭)
+
+시맨틱 태그를 푸시하면 자동 배포됩니다:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0          # 안정본
+git tag v0.2.0-beta && git push origin v0.2.0-beta # 프리릴리스
+```
+
+| 태그 | GitHub Release | Homebrew |
+|---|---|---|
+| `v1.2.3` | 정식 릴리스 | `Formula/dock-util.rb` 갱신 → `brew upgrade`로 배포 |
+| `v1.2.3-beta` | 사전릴리스 표시 | `Formula/dock-util@1.2.3-beta.rb` 추가 (latest 불변) |
+
+설치:
+```bash
+brew tap <owner>/homebrew-tap
+brew install dock-util                    # 안정본 (upgrade로 갱신)
+brew install dock-util@0.2.0-beta         # 특정 프리릴리스 버전 고정 설치
+```
+
+**저장소 설정 필요**: `Settings → Secrets → Actions`에 `TAP_TOKEN`(탭 저장소에 push 가능한 PAT),
+원한다면 `Variables → TAP_REPOSITORY`(기본값 `<owner>/homebrew-tap`). 탭 저장소에는 `Formula/` 디렉터리만 있으면 시작 가능합니다.
+
 ## 알려진 제약
 
 - macOS 알림센터 기록은 공개 API가 없어 알림 위젯은 인앱 이벤트 피드
