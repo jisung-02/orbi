@@ -8,6 +8,7 @@ mod ipc;
 mod panel;
 mod placement;
 mod platform;
+mod qa;
 mod widgets;
 
 
@@ -21,6 +22,12 @@ fn main() {
         println!("dock_frame={dock:?}");
         println!("screen={screen:?}");
         println!("ax_debug={}", platform::ax_debug());
+        return;
+    }
+
+    // QA 모드: 마우스 이벤트 시뮬레이션으로 호버/클릭 자동 테스트
+    if std::env::args().any(|a| a == "--qa") {
+        qa::run();
         return;
     }
 
@@ -50,6 +57,7 @@ fn main() {
             ipc::shelf_copy,
             ipc::shelf_reveal,
             ipc::shelf_open,
+            ipc::shelf_open_path,
             ipc::shelf_move_to,
             ipc::format_text,
             ipc::get_feed,

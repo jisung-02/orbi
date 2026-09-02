@@ -283,6 +283,25 @@ pub fn shelf_open(st: tauri::State<AppState>, idx: usize) -> Result<(), String> 
 }
 
 #[tauri::command]
+pub fn shelf_open_path(path: String) -> Result<(), String> {
+    let expanded = if path.starts_with('~') {
+        if let Some(home) = dirs::home_dir() {
+            home.join(&path[2..]).to_string_lossy().to_string()
+        } else {
+            path.clone()
+        }
+    } else {
+        path.clone()
+    };
+    let dir = std::path::Path::new(&expanded);
+    if dir.exists() {
+        std::process::Command::new("open").arg(dir).spawn().map(|_| ()).map_err(|e| e.to_string())
+    } else {
+        Err(format!("경로가 존재하지 않습니다: {}", expanded))
+    }
+}
+
+#[tauri::command]
 pub fn shelf_move_to(app: AppHandle, st: tauri::State<AppState>, idx: Option<usize>) -> Result<(usize, usize), String> {
     let lang = st.cfg.lock().lang.clone();
     let (ok, fail) = crate::widgets::shelf::move_to(&app, &st, idx)?;
@@ -375,7 +394,7 @@ pub fn term_launch_cli(app: AppHandle, st: tauri::State<AppState>, program: Stri
 pub fn open_gui_app(app: AppHandle, st: tauri::State<AppState>, name: String) -> Result<(), String> {
     let app_name = match name.as_str() {
         "claude" => "Claude",
-        "chatgpt" => "ChatGPT",
+        "codex" | "chatgpt" => "ChatGPT",
         _ => return Err("허용되지 않은 앱".into()),
     };
     std::process::Command::new("open")

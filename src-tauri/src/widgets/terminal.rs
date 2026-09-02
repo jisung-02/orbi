@@ -16,6 +16,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const SCROLLBACK_CAP: usize = 128 * 1024;
 const PENDING_CAP: usize = 64 * 1024;
+const DRAIN_BATCH: usize = 16 * 1024; // 드레인을 16KB 단위로 배치 처리
 const FLUSH_INTERVAL_MS: u64 = 50;
 const MAX_CHUNK: usize = 32 * 1024;
 
@@ -70,18 +71,19 @@ pub fn ensure(app: &AppHandle, st: &crate::app::AppState) -> Result<(), String> 
                 Ok(0) => break,
                 Ok(n) => {
                     {
+                        // drain은 O(n) memmove이므로 배치 처리로 빈도 최소화
                         let mut sb = sb.lock();
                         sb.extend_from_slice(&buf[..n]);
-                        let overflow = sb.len().saturating_sub(SCROLLBACK_CAP);
-                        if overflow > 0 {
+                        if sb.len() > SCROLLBACK_CAP + DRAIN_BATCH {
+                            let overflow = sb.len() - SCROLLBACK_CAP;
                             sb.drain(..overflow);
                         }
                     }
                     {
                         let mut pd = pend.lock();
                         pd.extend_from_slice(&buf[..n]);
-                        let overflow = pd.len().saturating_sub(PENDING_CAP);
-                        if overflow > 0 {
+                        if pd.len() > PENDING_CAP + DRAIN_BATCH {
+                            let overflow = pd.len() - PENDING_CAP;
                             pd.drain(..overflow);
                         }
                     }

@@ -1,0 +1,4 @@
+[build]
+# target-cpu=native: NEON + Apple Silicon 전체 명령어셋 활성화 (자동 벡터화 포함)
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]

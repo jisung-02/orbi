@@ -378,6 +378,8 @@ select option { background: #2a2c33; }
 
 .orb-center {
   position: absolute;
+  will-change: transform, opacity;
+  contain: layout style;
   left: 308px;   /* cx 336 - r 28 */
   top: 236px;    /* cy 264 - r 28 */
   width: 56px; height: 56px;
@@ -413,6 +415,7 @@ select option { background: #2a2c33; }
 
 .orb-item {
   position: absolute;
+  contain: layout style;
   width: 46px; height: 46px;
   transform: scale(0);
   opacity: 0;

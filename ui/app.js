@@ -15,9 +15,7 @@ const STR = {
     quit: "종료", auto_note: "독 옆 공간은 현재 화면에 맞춰 자동 배치됩니다.",
     notifications: "알림", feed_empty: "알림이 없습니다", feed_clear: "전체 지우기",
     pomodoro: "포모도로", terminal: "터미널", shelf: "선반", monitor: "시스템", toggles: "토글",
-    ai_term: "AI 터미널", ai_apps: "AI 앱", not_installed: "미설치",
-    launch_claude_app: "Claude 앱", launch_chatgpt_app: "ChatGPT 앱",
-    run_codex: "Codex 실행", run_claude: "Claude Code 실행",
+    not_installed: "미설치",
     agents: "에이전트", formatter: "포매터", settings: "설정",
     focus: "집중", brk: "휴식", focus_started: "집중 시작", break_started: "휴식 시작",
     round: "라운드", waiting: "대기 중", paused_txt: "일시정지 · ",
@@ -55,9 +53,7 @@ const STR = {
     quit: "Quit", auto_note: "Position adapts to the screen automatically.",
     notifications: "Alerts", feed_empty: "No alerts", feed_clear: "Clear all",
     pomodoro: "Pomodoro", terminal: "Terminal", shelf: "Shelf", monitor: "System", toggles: "Toggles",
-    ai_term: "AI Terminal", ai_apps: "AI Apps", not_installed: "Not installed",
-    launch_claude_app: "Claude app", launch_chatgpt_app: "ChatGPT app",
-    run_codex: "Run Codex", run_claude: "Run Claude Code",
+    not_installed: "Not installed",
     agents: "Agents", formatter: "Formatter", settings: "Settings",
     focus: "Focus", brk: "Break", focus_started: "Focus started", break_started: "Break started",
     round: "rounds", waiting: "Idle", paused_txt: "Paused · ",
@@ -180,9 +176,9 @@ const ORB_GEO = { cx: 336, cy: 264 };
 // 바깥 링을 시계방향(위→아래)으로 이어가는 스네이크 배치
 const ORB_ORDER = ["terminal", "ai_term", "pomodoro", "shelf", "monitor", "toggles", "agents", "ai_apps", "format", "feed", "settings"];
 const ORB_RINGS = [
-  { r: 115, aFrom: 97, aTo: 172, cap: 4 },    // 안쪽 링: 위 → 아래
-  { r: 185, aFrom: 178, aTo: 99, cap: 5 },    // 바깥 링: 아래 → 위 (방향 반전)
-  { r: 235, aFrom: 97, aTo: 172, cap: 6 },    // 세 번째 링: 위 → 아래
+  { r: 120, aFrom: 100, aTo: 170, cap: 4 },   // 안쪽 링: 4개
+  { r: 190, aFrom: 100, aTo: 170, cap: 4 },   // 중간 링: 4개
+  { r: 240, aFrom: 100, aTo: 170, cap: 3 },   // 바깥 링: 3개
 ];
 const ORB_BADGE = { agents: "agents", shelf: "shelf", feed: "feed", pomodoro: "pomodoro" };
 const ORB_LABELS = () => ({
@@ -336,6 +332,39 @@ function popAiApps() {
     ${row("claude", "Claude", "🟠", st.claude_app)}
     ${row("chatgpt", "ChatGPT", "🟢", st.chatgpt_app)}
     <div class="stat-sub" style="margin-top:4px;">기본 브라우저/앱으로 실행됩니다.</div>`;
+}
+
+function popCodex() {
+  const st = S.aiStatus || {};
+  return launcherPopover("codex", "Codex", st.codex, st.chatgpt_app);
+}
+function popClaude() {
+  const st = S.aiStatus || {};
+  return launcherPopover("claude", "Claude", st.claude, st.claude_app);
+}
+
+function launcherPopover(key, label, cliOk, guiOk) {
+  const isClaude = key === "claude";
+  const appName = isClaude ? "Claude" : "ChatGPT";
+  const cliIcon = isClaude ? "🟠" : "⚙️";
+  const guiIcon = isClaude ? "🟠" : "🟢";
+  return `
+    <h2>${label}</h2>
+    <div class="sec">
+      <div class="row">
+        <div><div class="rl">${cliIcon} 터미널</div><div class="rs">${cliOk ? "CLI 준비됨" : t("not_installed")}</div></div>
+        <button class="small ${cliOk ? "primary" : ""}" data-act="ai_cli" data-p="${key}" ${cliOk ? "" : "disabled"}>▶</button>
+      </div>
+      <div class="row">
+        <div><div class="rl">${guiIcon} ${appName} 앱</div><div class="rs">${guiOk ? "/Applications" : t("not_installed")}</div></div>
+        <button class="small ${guiOk ? "primary" : ""}" data-act="ai_gui" data-n="${key}" ${guiOk ? "" : "disabled"}>▶</button>
+      </div>
+      <div class="row">
+        <div><div class="rl">🔄 계정 변환</div><div class="rs">프로필 전환</div></div>
+        <button class="small" data-act="acct_${key}">열기</button>
+      </div>
+    </div>
+    <div class="stat-sub">터미널 세션은 닫아도 유지됩니다.</div>`;
 }
 
 function popTerminal() {
@@ -713,11 +742,23 @@ function bindPopActions() {
             await invoke("open_popover", { widget: "terminal", tileX: ORB_GEO.cx });
             break;
           }
-          case act === "ai_app": {
+          case act === "ai_gui": {
+            const key = el.dataset.n;
+            const app = key === "claude" ? "Claude" : "ChatGPT";
             try {
-              await invoke("open_gui_app", { name: el.dataset.n });
-              toast(el.dataset.n === "claude" ? "Claude" : "ChatGPT");
+              await invoke("open_gui_app", { name: key });
+              toast(app);
             } catch (e) { toast(String(e)); }
+            break;
+          }
+          case act.startsWith("acct_"): {
+            const key = act.slice(5);
+            const dir = key === "claude" ? "~/.claude" : "~/.codex";
+            try {
+              const p = dir.replace("~", require("os").homedir());
+            } catch {}
+            // 파일 관리자로 설정 디렉터리 열기
+            try { invoke("shelf_open_path", { path: dir }); } catch {}
             break;
           }
           case act === "term_new": invoke("term_reset").then(() => invoke("term_init").catch(() => {})); if (TERM) { TERM.reset(); } toast(t("new_shell_started")); break;
@@ -821,7 +862,7 @@ async function boot() {
     // 팝오버 초기 데이터 로드
     if (popWidget === "pomodoro" || popWidget === "settings") S.config = await invoke("get_config");
     if (popWidget === "settings") { try { S.version = await T.app.getVersion(); } catch { S.version = "?"; } }
-    if (popWidget === "ai_term" || popWidget === "ai_apps") {
+    if (popWidget === "codex" || popWidget === "claude") {
       try { S.aiStatus = await invoke("ai_status"); } catch { S.aiStatus = {}; }
     }
     if (popWidget === "shelf") S.shelf = await invoke("shelf_list");
