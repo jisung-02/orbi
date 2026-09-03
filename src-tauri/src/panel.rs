@@ -109,6 +109,9 @@ pub fn apply_overlay(panel: usize, rect: RectF, level: i64) {
         let behavior: u64 = (1u64 << 0) | (1u64 << 4) | (1u64 << 8) | (1u64 << 10);
         let _: () = msg_send![p, setCollectionBehavior: behavior];
         let _: () = msg_send![p, orderFrontRegardless];
+        // 앱 활성화 (accessory 앱이 전체화면 스페이스에 합류하려면 필요)
+        let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
     });
 }
 

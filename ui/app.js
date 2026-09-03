@@ -203,7 +203,7 @@ async function bindEvents() {
 const ORB_GEO = { cx: 336, cy: 264 };
 // 배치 순서(아래 끝에서 시작): 안쪽 링을 반시계방향으로 채우고, 끝에 도달하면
 // 바깥 링을 시계방향(위→아래)으로 이어가는 스네이크 배치
-const ORB_ORDER = ["terminal", "ai_term", "pomodoro", "shelf", "monitor", "toggles", "agents", "ai_apps", "format", "feed", "settings"];
+const ORB_ORDER = ["terminal", "ai_term", "timer", "shelf", "monitor", "toggles", "agents", "ai_apps", "format", "feed", "settings"];
 const ORB_RINGS = [
   { r: 115, aFrom: 97,  aTo: 172, cap: 4 },   // 안쪽 링: 위 → 아래
   { r: 185, aFrom: 172, aTo: 97,  cap: 4 },   // 중간 링: 아래 → 위
@@ -493,42 +493,144 @@ function setTermFont(term, size) {
 
 function popEmpty() { return `<h2>${t("ready")}</h2>`; }
 
-/* --- 포모도로 --- */
-function popPomodoro() {
-  const p = S.pomodoro;
-  const phaseTxt = p.phase === "break" ? t("brk") : t("focus");
-  const cls = p.phase === "break" ? "break" : "focus";
-  return `
-    <h2>${IC.timer} ${t("pomodoro")}</h2>
-    <div class="sec" style="text-align:center; padding: 16px 10px;">
-      <div class="big-num ${cls}" id="pom-time">${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
-      <div class="stat-sub" style="margin-top:6px;" id="pom-status">
-        ${p.running ? (p.paused ? t("paused_txt") : "") + phaseTxt : t("waiting")} · ${t("round")} ${p.rounds_done}
-      </div>
-    </div>
-    <div class="sec">
-      <div class="row"><span class="rl">${t("focus")}</span><span class="rs">${p.focus_min} min</span></div>
-      <div class="row"><span class="rl">${t("brk")}</span><span class="rs">${p.break_min} min</span></div>
-    </div>
-    <div class="sec">
-      <div class="lbl">${t("presets")}</div>
-      <div class="btns" style="margin-top:2px;">
-        <button class="small" data-act="pom_preset" data-f="25" data-b="5">25/5</button>
-        <button class="small" data-act="pom_preset" data-f="50" data-b="10">50/10</button>
-        <button class="small" data-act="pom_preset" data-f="15" data-b="5">15/5</button>
-      </div>
-    </div>
-    <div class="btns">
-      ${p.running
-        ? (p.paused
-            ? `<button class="primary" data-act="pom_resume">${t("resume")}</button>`
-            : `<button data-act="pom_pause">${t("pause")}</button>`)
-        : `<button class="primary" data-act="pom_start">${t("start")}</button>`}
-      <button data-act="pom_reset">${t("reset")}</button>
-    </div>`;
+/* --- 타이머 (포모도로/타이머/스톱워치 통합) --- */
+const localTimer = {
+  mode: "pomodoro",   // pomodoro | timer | stopwatch
+  running: false,
+  paused: false,
+  startAt: null,       // ms timestamp
+  pausedElapsed: 0,    // ms (스톱워치/타이머 일시정지용)
+  durationSecs: 300,   // 타이머 목표 시간
+  laps: [],
+  presetFocus: 25,
+  presetBreak: 5,
+};
+
+function timerElapsedMs() {
+  if (!localTimer.startAt) return localTimer.pausedElapsed;
+  return Date.now() - localTimer.startAt + localTimer.pausedElapsed;
 }
 
-/* --- 모니터 --- */
+function fmtStopwatch(ms) {
+  const total = Math.floor(ms / 10); // centiseconds
+  const cs = total % 100;
+  const s = Math.floor(total / 100) % 60;
+  const m = Math.floor(total / 6000);
+  const h = Math.floor(total / 360000);
+  return (h > 0 ? h + ":" : "") + String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0") + "." + String(cs).padStart(2, "0");
+}
+
+function popTimer() {
+  const mode = localTimer.mode;
+  const isPom = mode === "pomodoro";
+  const p = S.pomodoro;
+  let body = "";
+  let btns = "";
+
+  if (mode === "pomodoro") {
+    const phaseTxt = p.phase === "break" ? t("brk") : t("focus");
+    body = \`
+      <div class="sec" style="text-align:center; padding: 14px 10px;">
+        <div class="big-num \${p.phase === "break" ? "break" : "focus"}" id="tmr-display">\${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
+        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">
+          \${p.running ? (p.paused ? t("paused_txt") : "") + phaseTxt : t("waiting")} · \${t("round")} \${p.rounds_done}
+        </div>
+      </div>
+      <div class="sec">
+        <div class="row"><span class="rl">\${t("focus")}</span><span class="rs">\${p.focus_min} min</span></div>
+        <div class="row"><span class="rl">\${t("brk")}</span><span class="rs">\${p.break_min} min</span></div>
+      </div>
+      <div class="sec">
+        <div class="lbl">\${t("presets")}</div>
+        <div class="btns" style="margin-top:2px;">
+          <button class="small" data-act="pom_preset" data-f="25" data-b="5">25/5</button>
+          <button class="small" data-act="pom_preset" data-f="50" data-b="10">50/10</button>
+          <button class="small" data-act="pom_preset" data-f="15" data-b="5">15/5</button>
+        </div>
+      </div>\`;
+    btns = p.running
+      ? (p.paused
+          ? \`<button class="primary" data-act="pom_resume">\${t("resume")}</button>\`
+          : \`<button data-act="pom_pause">\${t("pause")}</button>\`)
+      : \`<button class="primary" data-act="pom_start">\${t("start")}</button>\`;
+    btns += \`<button data-act="pom_reset">\${t("reset")}</button>\`;
+  }
+  else if (mode === "timer") {
+    const elapsed = timerElapsedMs();
+    const remainMs = Math.max(0, localTimer.durationSecs * 1000 - elapsed);
+    const remainS = Math.ceil(remainMs / 1000);
+    body = \`
+      <div class="sec" style="text-align:center; padding: 14px 10px;">
+        <div class="big-num" id="tmr-display">\${fmtTime(Math.ceil(remainMs / 1000))}</div>
+        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">\${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
+      </div>
+      <div class="sec">
+        <div class="lbl">\${t("presets")}</div>
+        <div class="btns" style="margin-top:2px;">
+          <button class="small" data-act="tmr_set" data-s="60">1분</button>
+          <button class="small" data-act="tmr_set" data-s="300">5분</button>
+          <button class="small" data-act="tmr_set" data-s="600">10분</button>
+          <button class="small" data-act="tmr_set" data-s="1800">30분</button>
+        </div>
+      </div>\`;
+    btns = localTimer.running
+      ? (localTimer.paused
+          ? \`<button class="primary" data-act="tmr_resume">\${t("resume")}</button>\`
+          : \`<button data-act="tmr_pause">\${t("pause")}</button>\`)
+      : \`<button class="primary" data-act="tmr_start">\${t("start")}</button>\`;
+    btns += \`<button data-act="tmr_reset">\${t("reset")}</button>\`;
+  }
+  else if (mode === "stopwatch") {
+    const elapsed = timerElapsedMs();
+    body = \`
+      <div class="sec" style="text-align:center; padding: 14px 10px;">
+        <div class="big-num" id="tmr-display">\${fmtStopwatch(elapsed)}</div>
+        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">\${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
+      </div>
+      \${localTimer.laps.length ? \`<div class="sec"><div class="lbl">Laps</div>\${localTimer.laps.map((l, i) => \`<div class="row"><span class="rl">#\${i + 1}</span><span class="rs">\${fmtStopwatch(l)}</span></div>\`).join("")}</div>\` : ""}
+    \`;
+    btns = \`
+      <div class="btns">
+        \${localTimer.running && !localTimer.paused
+          ? \`<button data-act="sw_lap">Lap</button>\`
+          : \`<button class="primary" data-act="sw_start">\${t("start")}</button>\`}
+        \${localTimer.running && localTimer.paused
+          ? \`<button class="primary" data-act="sw_resume">\${t("resume")}</button>\`
+          : \`<button data-act="sw_pause">\${t("pause")}</button>\`}
+        <button data-act="sw_reset">\${t("reset")}</button>
+      </div>\`;
+  }
+
+  const tabs = ["pomodoro", "timer", "stopwatch"].map((m) =>
+    \`<div style="flex:1; text-align:center; font-size:11px; font-weight:600; padding:6px 2px; border-radius:6px;
+      \${mode === m ? "background:rgba(255,255,255,.14); color:#fff;" : "color:var(--text-dim)"}"
+      data-act="mode_\${m}">\${m === "pomodoro" ? "포모" : m === "timer" ? "타이머" : "스톱워치"}</div>\`
+  ).join("");
+
+  return \`
+    <h2>\${IC.timer} \${t("timer")}</h2>
+    <div class="sec" style="padding:6px;">
+      <div class="seg" style="display:flex;">\${tabs}</div>
+    </div>
+    \${body}
+    <div class="btns">\${btns}</div>\`;
+}
+
+// 로컬 타이머/스톱워치 틱 (JS 전용, 100ms)
+setInterval(() => {
+  if (popWidget !== "timer" || !localTimer.running || localTimer.paused) return;
+  const el = $("#tmr-display");
+  if (!el) return;
+  const elapsed = timerElapsedMs();
+  if (localTimer.mode === "stopwatch") {
+    el.textContent = fmtStopwatch(elapsed);
+  } else if (localTimer.mode === "timer") {
+    const remain = Math.max(0, localTimer.durationSecs * 1000 - elapsed);
+    el.textContent = fmtTime(Math.ceil(remain / 1000));
+  }
+}, 100);
+
+function popTerminal() {/* --- 모니터 --- */
 function popMonitor() {
   const s = S.stats;
   if (!s) return `<h2>${IC.monitor} ${t("monitor")}</h2><div class="empty">${t("collecting")}</div>`;

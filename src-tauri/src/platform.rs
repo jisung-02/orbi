@@ -339,6 +339,27 @@ pub mod win {
     }
 
     /// AppKit 좌표(좌하단 원점)로 프레임 지정
+    /// 오버레이 자가 치료: 온스크린 확인 + 전면 표시 + 레벨/컬렉션 재단언 + 앱 활성화
+    pub fn ensure_visible_on_main(ptr: *mut c_void, level: i64) {
+        let ptr = NsWinPtr(ptr);
+        crate::panel::on_main_async(move || unsafe {
+            let p = ptr;
+            if p.0.is_null() {
+                return;
+            }
+            let on: bool = msg_send![p.0 as *mut AnyObject, isVisible];
+            if !on {
+                let _: () = msg_send![p.0 as *mut AnyObject, orderFrontRegardless];
+            }
+            let _: () = msg_send![p.0 as *mut AnyObject, setLevel: level];
+            let behavior: u64 = (1u64 << 0) | (1u64 << 8);
+            let _: () = msg_send![p.0 as *mut AnyObject, setCollectionBehavior: behavior];
+            // 앱 활성화 (전체화면 스페이스 합류에 필요)
+            let ns_app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            let _: () = msg_send![ns_app, activateIgnoringOtherApps: true];
+        });
+    }
+
     pub unsafe fn set_frame(ptr: *mut c_void, r: RectF) {
         if ptr.is_null() {
             return;
