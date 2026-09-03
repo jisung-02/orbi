@@ -135,14 +135,43 @@ const $ = (sel) => document.querySelector(sel);
 async function bindEvents() {
   await listen("pomodoro", (e) => {
     S.pomodoro = e.payload;
-    if (popWidget === "pomodoro") renderPop();
+    const p = S.pomodoro;
+    // 오브 배지
     if (isOrb) {
-      const p = S.pomodoro;
       const el = $("#ob-pomodoro");
       if (el) {
         const show = p.running && !p.paused;
         el.textContent = show ? fmtTime(p.remaining_secs) : "";
         el.className = "orb-badge amber" + (show ? "" : " hidden");
+      }
+    }
+    // 팝오버: 타겟 DOM 업데이트 (전체 리렌더 방지)
+    if (popWidget === "pomodoro") {
+      const timeEl = $("#pom-time");
+      if (timeEl) {
+        const cls = p.phase === "break" ? "break" : "focus";
+        timeEl.className = "big-num " + cls;
+        timeEl.textContent = p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60);
+      }
+      const statusEl = $("#pom-status");
+      if (statusEl) {
+        const phaseTxt = p.phase === "break" ? t("brk") : t("focus");
+        statusEl.textContent = p.running
+          ? (p.paused ? t("paused_txt") : "") + phaseTxt + " 중" + " · " + t("round") + " " + p.rounds_done
+          : t("waiting") + " · " + t("round") + " " + p.rounds_done;
+      }
+      // 버튼 상태 업데이트 (시작/일시정지/재개 전환)
+      const btnsEl = $("#pom-btns");
+      if (btnsEl) {
+        const wantStart = !p.running;
+        const wantResume = p.running && p.paused;
+        const wantPause = p.running && !p.paused;
+        let btn = btnsEl.querySelector("[data-act=pom_start],[data-act=pom_pause],[data-act=pom_resume]");
+        if (btn) {
+          if (wantStart) { btn.textContent = t("start"); btn.dataset.act = "pom_start"; btn.classList.add("primary"); }
+          else if (wantPause && btn.dataset.act !== "pom_pause") { btn.textContent = t("pause"); btn.dataset.act = "pom_pause"; btn.classList.remove("primary"); }
+          else if (wantResume && btn.dataset.act !== "pom_resume") { btn.textContent = t("resume"); btn.dataset.act = "pom_resume"; btn.classList.add("primary"); }
+        }
       }
     }
   });
@@ -176,9 +205,9 @@ const ORB_GEO = { cx: 336, cy: 264 };
 // 바깥 링을 시계방향(위→아래)으로 이어가는 스네이크 배치
 const ORB_ORDER = ["terminal", "ai_term", "pomodoro", "shelf", "monitor", "toggles", "agents", "ai_apps", "format", "feed", "settings"];
 const ORB_RINGS = [
-  { r: 120, aFrom: 100, aTo: 170, cap: 4 },   // 안쪽 링: 4개
-  { r: 190, aFrom: 100, aTo: 170, cap: 4 },   // 중간 링: 4개
-  { r: 240, aFrom: 100, aTo: 170, cap: 3 },   // 바깥 링: 3개
+  { r: 115, aFrom: 97,  aTo: 172, cap: 4 },   // 안쪽 링: 위 → 아래
+  { r: 185, aFrom: 172, aTo: 97,  cap: 4 },   // 중간 링: 아래 → 위
+  { r: 240, aFrom: 97,  aTo: 172, cap: 3 },   // 바깥 링: 위 → 아래
 ];
 const ORB_BADGE = { agents: "agents", shelf: "shelf", feed: "feed", pomodoro: "pomodoro" };
 const ORB_LABELS = () => ({
@@ -472,8 +501,8 @@ function popPomodoro() {
   return `
     <h2>${IC.timer} ${t("pomodoro")}</h2>
     <div class="sec" style="text-align:center; padding: 16px 10px;">
-      <div class="big-num ${cls}">${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
-      <div class="stat-sub" style="margin-top:6px;">
+      <div class="big-num ${cls}" id="pom-time">${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
+      <div class="stat-sub" style="margin-top:6px;" id="pom-status">
         ${p.running ? (p.paused ? t("paused_txt") : "") + phaseTxt : t("waiting")} · ${t("round")} ${p.rounds_done}
       </div>
     </div>
