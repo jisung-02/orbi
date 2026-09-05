@@ -32,3 +32,29 @@ jobs:
       - name: 빌드
         run: cargo build --release
         working-directory: src-tauri
+
+  native:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: goport/go.mod
+          cache-dependency-path: goport/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Swift + Go 빌드
+        run: ./goport/build.sh
+      - name: Go 테스트 및 데이터 경합 검사
+        working-directory: goport
+        run: go test -race ./...
+      - name: Go 정적 검사
+        working-directory: goport
+        run: go vet ./...
+      - name: 네이티브 UI 회귀 테스트
+        run: ./goport/test-native.sh
+      - name: 웹 UI 회귀 테스트
+        run: node --test tests/ui.test.cjs
+      - name: 배포 버전 갱신 테스트
+        run: python3 tests/release_test.py
