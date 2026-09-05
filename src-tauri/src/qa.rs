@@ -12,7 +12,6 @@ extern "C" {
     ) -> *mut c_void;
     fn CGEventPost(tap: u32, event: *mut c_void);
     fn CFRelease(cf: *mut c_void);
-    fn usleep(microseconds: u32);
 }
 
 #[repr(C)]

@@ -44,6 +44,7 @@ fn main() {
             ipc::pom_pause,
             ipc::pom_resume,
             ipc::pom_reset,
+            ipc::timer_done,
             ipc::get_toggles,
             ipc::toggle_dark,
             ipc::toggle_wifi,

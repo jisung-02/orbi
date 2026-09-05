@@ -11,6 +11,7 @@ use parking_lot::Mutex;
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -21,6 +22,7 @@ const FLUSH_INTERVAL_MS: u64 = 50;
 const MAX_CHUNK: usize = 32 * 1024;
 
 pub struct TermSession {
+    stopped: Arc<AtomicBool>,
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Box<dyn Write + Send>,
     pub child: Box<dyn Child + Send + Sync>,
@@ -44,6 +46,8 @@ pub fn ensure(app: &AppHandle, st: &crate::app::AppState) -> Result<(), String> 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     let mut cmd = CommandBuilder::new(shell);
     cmd.arg("-l");
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
     if let Some(home) = dirs::home_dir() {
         cmd.cwd(home);
     }
@@ -58,11 +62,13 @@ pub fn ensure(app: &AppHandle, st: &crate::app::AppState) -> Result<(), String> 
     let scrollback = Arc::new(Mutex::new(Vec::new()));
 
     let pending: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let stopped = Arc::new(AtomicBool::new(false));
+    let reader_finished = Arc::new(AtomicBool::new(false));
+    let finished = reader_finished.clone();
     let sb = scrollback.clone();
     let pend = pending.clone();
 
     // 리더: PTY 출력 → 스크롤백 + 대기 버퍼 (둘 다 cap 적용)
-    let app2 = app.clone();
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 4096];
@@ -91,33 +97,40 @@ pub fn ensure(app: &AppHandle, st: &crate::app::AppState) -> Result<(), String> 
                 Err(_) => break,
             }
         }
-        let _ = app2.emit_to("popover-terminal", "term-exit", true);
+        reader_finished.store(true, Ordering::Release);
     });
 
     // 플러셔: 50ms마다 대기 버퍼를 웹뷰로 전송 (팝오버 열려 있을 때만)
     let app3 = app.clone();
     let pend2 = pending.clone();
+    let flush_stopped = stopped.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(FLUSH_INTERVAL_MS));
+        if flush_stopped.load(Ordering::Acquire) { break; }
+        let exited = finished.load(Ordering::Acquire);
         if app3.get_webview_window("popover-terminal").is_none() {
             // 팝오버 닫힘: pending 비워서 무한 증가 방지
             pend2.lock().clear();
+            if exited { break; }
             continue;
         }
         let mut chunk = std::mem::take(&mut *pend2.lock());
-        if chunk.is_empty() {
-            continue;
-        }
         // 전송 크기 제한 (너무 크면 잘라서 뒤쪽 우선)
         if chunk.len() > MAX_CHUNK {
             let skip = chunk.len() - MAX_CHUNK;
             chunk.drain(..skip);
+            while chunk.first().is_some_and(|b| b & 0xC0 == 0x80) { chunk.remove(0); }
         }
-        let text = String::from_utf8_lossy(&chunk).to_string();
-        let _ = app3.emit_to("popover-terminal", "term-out", text);
+        let text = output_chunk(&mut chunk);
+        if !chunk.is_empty() { pend2.lock().splice(..0, chunk); }
+        if !text.is_empty() { let _ = app3.emit_to("popover-terminal", "term-out", text); }
+        if exited {
+            let _ = app3.emit_to("popover-terminal", "term-exit", true);
+            break;
+        }
     });
 
-    *guard = Some(TermSession { master, writer, child, killer, scrollback });
+    *guard = Some(TermSession { stopped, master, writer, child, killer, scrollback });
     Ok(())
 }
 
@@ -154,9 +167,38 @@ pub fn resize(st: &crate::app::AppState, cols: u16, rows: u16) {
 /// 셸을 종료하고 세션을 정리 (wait 스레드로 좀비 방지)
 pub fn reset(st: &crate::app::AppState) {
     if let Some(mut session) = st.term.lock().take() {
+        session.stopped.store(true, Ordering::Release);
         let _ = session.killer.kill();
         std::thread::spawn(move || {
             let _ = session.child.wait();
         });
+    }
+}
+
+fn output_chunk(pending: &mut Vec<u8>) -> String {
+    let mut chunk = std::mem::take(pending);
+    // 마지막 코드 포인트의 미완성 바이트는 다음 PTY 읽기로 이월한다.
+    let mut start = chunk.len().saturating_sub(3);
+    while start < chunk.len() && chunk[start] & 0xC0 == 0x80 { start += 1; }
+    if let Err(error) = std::str::from_utf8(&chunk[start..]) {
+        if error.error_len().is_none() {
+            *pending = chunk.split_off(start + error.valid_up_to());
+        }
+    }
+    String::from_utf8_lossy(&chunk).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn output_preserves_utf8_across_reads() {
+        for split in 1.."안🙂".len() {
+            let mut pending = "안🙂".as_bytes()[..split].to_vec();
+            let first = output_chunk(&mut pending);
+            pending.extend_from_slice(&"안🙂".as_bytes()[split..]);
+            assert_eq!(first + &output_chunk(&mut pending), "안🙂");
+            assert!(pending.is_empty());
+        }
     }
 }

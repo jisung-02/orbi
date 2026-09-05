@@ -123,11 +123,13 @@ pub fn orb_loop(app: tauri::AppHandle) {
         let (mx, my) = platform::mouse_location();
         let expanded = *st.orb_expanded.lock();
         let want_expand = !expanded && orb_in_hot(rect, mx, my);
-        let want_collapse = expanded
-            && !orb_in_window(rect, mx, my)
-            && left_at
-                .map(|t| t.elapsed() >= std::time::Duration::from_millis(250))
-                .unwrap_or(true);
+        let want_collapse = if !expanded || orb_in_window(rect, mx, my) {
+            left_at = None;
+            false
+        } else {
+            left_at.get_or_insert_with(std::time::Instant::now).elapsed()
+                >= std::time::Duration::from_millis(250)
+        };
         if !want_expand && !want_collapse {
             continue;
         }

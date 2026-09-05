@@ -22,8 +22,14 @@ pub fn monitor_loop(app: AppHandle) {
     // pmset/df 호출이 무거우므로 배터리·디스크는 15초 캐시
     type BattCache = Option<(std::time::Instant, Option<(u32, bool)>, f64)>;
     let mut slow_cache: BattCache = None;
+    let mut previous_sample: Option<std::time::Instant> = None;
     loop {
         std::thread::sleep(Duration::from_secs(2));
+        if app.get_webview_window("popover-monitor").is_none() {
+            previous_sample = None;
+            continue;
+        }
+        let elapsed = previous_sample.replace(std::time::Instant::now()).map(|t| t.elapsed().as_secs_f64());
         let (battery, disk_free) = match &slow_cache {
             Some((t, b, d)) if t.elapsed() < Duration::from_secs(15) => (*b, *d),
             _ => {
@@ -38,7 +44,7 @@ pub fn monitor_loop(app: AppHandle) {
             let mut sys = st.sys.lock();
             sys.refresh_cpu_usage();
             sys.refresh_memory();
-            let cpu = sys.global_cpu_usage();
+            let cpu = if elapsed.is_some() { sys.global_cpu_usage() } else { 0.0 };
             let total = sys.total_memory() as f64 / 1073741824.0;
             let used = sys.used_memory() as f64 / 1073741824.0;
             // 네트워크: 2초 창의 총 송수신 → KB/s
@@ -50,7 +56,7 @@ pub fn monitor_loop(app: AppHandle) {
                     rx += data.received();
                     tx += data.transmitted();
                 }
-                (rx as f64 / 2.0 / 1024.0, tx as f64 / 2.0 / 1024.0)
+                (rx as f64 / elapsed.unwrap_or(f64::INFINITY) / 1024.0, tx as f64 / elapsed.unwrap_or(f64::INFINITY) / 1024.0)
             };
             Stats {
                 cpu,

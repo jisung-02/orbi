@@ -137,34 +137,76 @@ pub fn move_to(
             None => shelf.iter().map(|it| (it.path.clone(), it.name.clone())).collect(),
         }
     };
+    let mut moved = std::collections::HashSet::new();
     let mut ok = 0;
     let mut fail = 0;
     for (src, name) in &items {
         let dst = dir.join(name);
         if move_file(std::path::Path::new(src), &dst).is_ok() {
             ok += 1;
+            moved.insert(src);
         } else {
             fail += 1;
         }
     }
     {
         let mut shelf = st.shelf.lock();
-        // 실제로 이동이 성공한 항목(dst에 존재)만 선반에서 제거
-        shelf.retain(|it| {
-            let dst = dir.join(std::path::Path::new(&it.path).file_name().unwrap_or_default());
-            !(dst.exists() && items.iter().any(|(s, _)| s == &it.path))
-        });
+        shelf.retain(|it| !moved.contains(&it.path));
     }
     Ok((ok, fail))
 }
 
 fn move_file(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::rename(src, dst) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
-            std::fs::copy(src, dst)?;
-            std::fs::remove_file(src)
-        }
-        Err(e) => Err(e),
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::OpenOptionsExt;
+    unsafe extern "C" {
+        fn renamex_np(from: *const std::ffi::c_char, to: *const std::ffi::c_char, flags: u32) -> i32;
+    }
+    let from = CString::new(src.as_os_str().as_bytes())?;
+    let to = CString::new(dst.as_os_str().as_bytes())?;
+    // macOS RENAME_EXCL: 동명 파일 덮어쓰기 방지.
+    if unsafe { renamex_np(from.as_ptr(), to.as_ptr(), 4) } == 0 {
+        return Ok(());
+    }
+    let error = std::io::Error::last_os_error();
+    if error.kind() != std::io::ErrorKind::CrossesDevices {
+        return Err(error);
+    }
+    let mut input = std::fs::File::open(src)?;
+    let meta = input.metadata()?;
+    if !meta.is_file() {
+        return Err(error);
+    }
+    use std::os::unix::fs::PermissionsExt;
+    let mut output = std::fs::OpenOptions::new().write(true).create_new(true)
+        .mode(meta.permissions().mode()).open(dst)?;
+    if let Err(e) = std::io::copy(&mut input, &mut output).and_then(|_| output.sync_all()) {
+        drop(output);
+        let _ = std::fs::remove_file(dst);
+        return Err(e);
+    }
+    std::fs::remove_file(src)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn move_does_not_overwrite_destination() {
+        let dir = std::env::temp_dir().join(format!("dock-util-shelf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src");
+        let dst = dir.join("dst");
+        std::fs::write(&src, "source").unwrap();
+        std::fs::write(&dst, "keep").unwrap();
+        let result = move_file(&src, &dst);
+        let source = std::fs::read_to_string(&src);
+        let dest = std::fs::read_to_string(&dst).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(result.is_err());
+        assert_eq!(source.unwrap(), "source");
+        assert_eq!(dest, "keep");
     }
 }

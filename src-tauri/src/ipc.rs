@@ -150,6 +150,17 @@ pub fn pom_reset(app: AppHandle, st: tauri::State<AppState>) {
     let _ = app.emit("pomodoro", &snap);
 }
 
+#[tauri::command]
+pub async fn timer_done(app: AppHandle, st: tauri::State<'_, AppState>, secs: u64) -> Result<(), String> {
+    let lang = st.cfg.lock().lang.clone();
+    let title = tr!(lang, "타이머 완료", "Timer finished");
+    let body = crate::i18n::fmt(&lang, "{}분 타이머가 끝났습니다", "{} min timer finished", &[&(secs / 60)]);
+    crate::widgets::feed::push(&app, "⏰", &title, &body);
+    crate::platform::notify(&title, &body);
+    let _ = std::process::Command::new("afplay").arg("/System/Library/Sounds/Glass.aiff").status();
+    Ok(())
+}
+
 // ---- 토글 ----
 
 #[tauri::command]
@@ -416,7 +427,7 @@ pub fn open_gui_app(app: AppHandle, st: tauri::State<AppState>, name: String) ->
 
 fn popover_size(widget: &str) -> (f64, f64) {
     match widget {
-        "pomodoro" => (300.0, 330.0),
+        "pomodoro" | "timer" => (300.0, 330.0),
         "monitor" => (320.0, 360.0),
         "toggles" => (270.0, 360.0),
         "agents" => (350.0, 400.0),
@@ -424,7 +435,7 @@ fn popover_size(widget: &str) -> (f64, f64) {
         "format" => (440.0, 480.0),
         "feed" => (360.0, 440.0),
         "terminal" => (680.0, 440.0),
-        "settings" => (300.0, 300.0),
+        "settings" => (300.0, 500.0),
         _ => (320.0, 360.0),
     }
 }
@@ -470,7 +481,8 @@ pub fn open_popover(
     tile_x: f64,
 ) -> Result<(), String> {
     // 이미 열려 있으면 닫기(토글). 창이 완전히 닫힌 뒤 새 창을 만든다 (경합 방지)
-    if let Some(prev) = st.popover.lock().clone() {
+    let previous = st.popover.lock().clone();
+    if let Some(prev) = previous {
         let was_same = prev == format!("popover-{widget}");
         if let Some(w) = app.get_webview_window(&prev) {
             let _ = w.close();

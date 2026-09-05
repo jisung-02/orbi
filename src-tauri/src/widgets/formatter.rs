@@ -14,16 +14,16 @@ fn parse_as_json_value(text: &str, format: &str) -> Result<serde_json::Value, St
             serde_json::to_value(v).map_err(|e| e.to_string())
         }
         "auto" => {
-            // JSON → YAML → TOML 순서로 시도
+            // JSON → TOML → YAML (TOML은 YAML 스칼라로도 파싱되므로 먼저 시도) 순서로 시도
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
                 return Ok(v);
             }
-            if let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(text) {
+            if let Ok(v) = toml::from_str::<toml::Value>(text) {
                 if let Ok(v) = serde_json::to_value(v) {
                     return Ok(v);
                 }
             }
-            if let Ok(v) = toml::from_str::<toml::Value>(text) {
+            if let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(text) {
                 if let Ok(v) = serde_json::to_value(v) {
                     return Ok(v);
                 }
@@ -80,6 +80,11 @@ mod tests {
         let json = format_text(&yaml, "yaml", true, Some("json")).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["b"][1], 2);
+    }
+
+    #[test]
+    fn auto_detects_toml_before_yaml_scalar() {
+        assert_eq!(format_text("answer = 42", "auto", false, Some("json")).unwrap(), r#"{"answer":42}"#);
     }
 
     #[test]
