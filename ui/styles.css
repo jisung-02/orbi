@@ -46,8 +46,6 @@ html, body {
     0 10px 34px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.10),
     inset 0 -1px 0 rgba(0, 0, 0, 0.14);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
   pointer-events: none;
 }
 
@@ -148,8 +146,6 @@ html, body {
   background: linear-gradient(160deg, rgba(44, 46, 54, 0.30), rgba(20, 21, 26, 0.42));
   border: 0.5px solid rgba(255, 255, 255, 0.13);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(30px) saturate(180%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
   pointer-events: none;
 }
 
@@ -477,10 +473,25 @@ select option { background: #2a2c33; }
 /* 라벨은 원 위에서만 표시 (항상 켜두면 이웃 원/라벨과 겹침) */
 .orb-item:hover .orb-label { opacity: 1; }
 
-body.expanded .orb-item { transform: scale(1); opacity: 1; }
+body.expanded .orb-item { transform: scale(1); opacity: 1; transition-delay: var(--reveal-delay, 0ms); }
 body.expanded .orb-center { transform: scale(0.92); }
 body.expanded .orb-pulse { animation: none; opacity: 0; }
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- AI 브랜드 로고 ---------- */
+.brand-img { width: 18px; height: 18px; border-radius: 4.5px; display: inline-block; vertical-align: middle; }
+.brand-duo { display: inline-flex; gap: 3px; align-items: center; }
+.brand-duo .brand-img { width: 17px; height: 17px; border-radius: 4px; }
+.orb-duo .brand-img { width: 16px; height: 16px; border-radius: 4px; }
+.brand-grid { display: inline-grid; grid-template-columns: repeat(2, 13px); gap: 2px; }
+.brand-grid .brand-img { width: 13px; height: 13px; border-radius: 3px; }
+
+/* ---------- 성능: 유휴 시 GPU 애니메이션 정지 ---------- */
+.orb-mode.idle .orb-pulse { animation-play-state: paused; opacity: 0.35; }
+
+/* ---------- 렌더링 절감 ---------- */
+.list-item { content-visibility: auto; contain-intrinsic-size: auto 52px; }
+body.idle *, body.idle *::before, body.idle *::after { animation-play-state: paused !important; }

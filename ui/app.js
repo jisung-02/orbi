@@ -15,7 +15,7 @@ const STR = {
     quit: "종료", auto_note: "독 옆 공간은 현재 화면에 맞춰 자동 배치됩니다.",
     notifications: "알림", feed_empty: "알림이 없습니다", feed_clear: "전체 지우기",
     pomodoro: "포모도로", terminal: "터미널", shelf: "선반", monitor: "시스템", toggles: "토글",
-    not_installed: "미설치",
+    not_installed: "미설치", timer: "타이머", stopwatch: "스톱워치", dark: "다크모드", mute: "음소거", battery: "배터리", uptime: "가동시간", ai_term: "AI 터미널", ai_apps: "AI 앱",
     agents: "에이전트", formatter: "포매터", settings: "설정",
     focus: "집중", brk: "휴식", focus_started: "집중 시작", break_started: "휴식 시작",
     round: "라운드", waiting: "대기 중", paused_txt: "일시정지 · ",
@@ -53,7 +53,7 @@ const STR = {
     quit: "Quit", auto_note: "Position adapts to the screen automatically.",
     notifications: "Alerts", feed_empty: "No alerts", feed_clear: "Clear all",
     pomodoro: "Pomodoro", terminal: "Terminal", shelf: "Shelf", monitor: "System", toggles: "Toggles",
-    not_installed: "Not installed",
+    not_installed: "Not installed", timer: "Timer", stopwatch: "Stopwatch", dark: "Dark mode", mute: "Mute", battery: "Battery", uptime: "Uptime", ai_term: "AI Terminal", ai_apps: "AI Apps",
     agents: "Agents", formatter: "Formatter", settings: "Settings",
     focus: "Focus", brk: "Break", focus_started: "Focus started", break_started: "Break started",
     round: "rounds", waiting: "Idle", paused_txt: "Paused · ",
@@ -106,6 +106,15 @@ const S = {
   config: null,
 };
 
+/* ---------- AI 브랜드 로고 (공식 앱 아이콘 — 해당사 서비스 런처 표기용) ---------- */
+const LOGO = {
+  claude: "icons/claude.png",
+  chatgpt: "icons/chatgpt.png",
+};
+const brandImg = (k, cls = "brand-img") => `<img class="${cls}" src="${LOGO[k]}" alt="" draggable="false">`;
+const brandDuo = (cls = "brand-duo") => `<span class="${cls}">${brandImg("chatgpt")}${brandImg("claude")}</span>`;
+const brandGrid = (cls = "brand-grid") => `<span class="${cls}">${brandImg("chatgpt")}${brandImg("claude")}${brandImg("claude")}${brandImg("chatgpt")}</span>`;
+
 /* ---------- 아이콘 (SF Symbols 느낌의 미니 SVG) ---------- */
 const IC = {
   timer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 13V9"/><path d="M10 2h4"/><path d="M12 2v3"/></svg>`,
@@ -117,8 +126,8 @@ const IC = {
   feed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M2.8 12h2.4M18.8 12h2.4M4.9 19.1l1.7-1.7M17.4 6.6l1.7-1.7"/></svg>`,
   terminal: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m7 9.5 3.2 2.7L7 14.9"/><path d="M12.6 15h4.4"/></svg>`,
-  ai_term: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="m6.8 9.5 3 2.5-3 2.5"/><path d="M12.5 15h4.5"/><path d="M17.5 4.5 18.3 6.3 20.1 7.1 18.3 7.9 17.5 9.7 16.7 7.9 14.9 7.1 16.7 6.3z" fill="currentColor" stroke="none"/></svg>`,
-  ai_apps: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.8"/><path d="M17 13.8v6.4M13.8 17h6.4"/></svg>`,
+  ai_term: brandDuo("brand-duo orb-duo"),
+  ai_apps: brandGrid(),
 };
 
 const AGENT_EMOJI = {
@@ -134,44 +143,24 @@ const $ = (sel) => document.querySelector(sel);
 /* ---------- 이벤트 구독 (바/팝오버/오브 공통) ---------- */
 async function bindEvents() {
   await listen("pomodoro", (e) => {
+    const previous = S.pomodoro;
     S.pomodoro = e.payload;
     const p = S.pomodoro;
     // 오브 배지
     if (isOrb) {
-      const el = $("#ob-pomodoro");
+      const el = $("#ob-timer");
       if (el) {
         const show = p.running && !p.paused;
         el.textContent = show ? fmtTime(p.remaining_secs) : "";
         el.className = "orb-badge amber" + (show ? "" : " hidden");
       }
     }
-    // 팝오버: 타겟 DOM 업데이트 (전체 리렌더 방지)
-    if (popWidget === "pomodoro") {
-      const timeEl = $("#pom-time");
-      if (timeEl) {
-        const cls = p.phase === "break" ? "break" : "focus";
-        timeEl.className = "big-num " + cls;
-        timeEl.textContent = p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60);
-      }
-      const statusEl = $("#pom-status");
-      if (statusEl) {
-        const phaseTxt = p.phase === "break" ? t("brk") : t("focus");
-        statusEl.textContent = p.running
-          ? (p.paused ? t("paused_txt") : "") + phaseTxt + " 중" + " · " + t("round") + " " + p.rounds_done
-          : t("waiting") + " · " + t("round") + " " + p.rounds_done;
-      }
-      // 버튼 상태 업데이트 (시작/일시정지/재개 전환)
-      const btnsEl = $("#pom-btns");
-      if (btnsEl) {
-        const wantStart = !p.running;
-        const wantResume = p.running && p.paused;
-        const wantPause = p.running && !p.paused;
-        let btn = btnsEl.querySelector("[data-act=pom_start],[data-act=pom_pause],[data-act=pom_resume]");
-        if (btn) {
-          if (wantStart) { btn.textContent = t("start"); btn.dataset.act = "pom_start"; btn.classList.add("primary"); }
-          else if (wantPause && btn.dataset.act !== "pom_pause") { btn.textContent = t("pause"); btn.dataset.act = "pom_pause"; btn.classList.remove("primary"); }
-          else if (wantResume && btn.dataset.act !== "pom_resume") { btn.textContent = t("resume"); btn.dataset.act = "pom_resume"; btn.classList.add("primary"); }
-        }
+    if (["pomodoro", "timer"].includes(popWidget) && localTimer.mode === "pomodoro") {
+      if (["running", "paused", "phase", "focus_min", "break_min", "rounds_done"].some(k => previous[k] !== p[k])) {
+        renderPop();
+      } else {
+        const display = $("#tmr-display");
+        if (display) display.textContent = fmtTime(p.running ? p.remaining_secs : p.focus_min * 60);
       }
     }
   });
@@ -195,6 +184,23 @@ async function bindEvents() {
     if (isOrb) { buildOrb(); }
     else if (popWidget && popWidget !== "terminal") renderPop();
   });
+  if (isOrb || popWidget === "shelf") {
+    await listen("tauri://drag-drop", (e) => {
+      const paths = e.payload?.paths || [];
+      if (paths.length) invoke("shelf_add", { paths });
+    });
+  }
+  if (isOrb) {
+  // 확장 상태: Go가 변경될 때만 orb-toggle 이벤트를 보낸다 (40ms 폴링 제거)
+  listen("orb-toggle", (e) => document.body.classList.toggle("expanded", !!e.payload));
+  listen("orb-idle", (e) => document.body.classList.toggle("idle", !!e.payload));
+  invoke("orb_state").then((st) => document.body.classList.toggle("expanded", !!st.expanded)).catch(() => {});
+  listen("visibility-changed", async () => {
+    S.config = await invoke("get_config");
+    buildOrb();
+  });
+  }
+
 }
 
 /* ---------- 오브 (동그라미 → 호버 시 2중 링 블룸) ---------- */
@@ -209,9 +215,9 @@ const ORB_RINGS = [
   { r: 185, aFrom: 172, aTo: 97,  cap: 4 },   // 중간 링: 아래 → 위
   { r: 240, aFrom: 97,  aTo: 172, cap: 3 },   // 바깥 링: 위 → 아래
 ];
-const ORB_BADGE = { agents: "agents", shelf: "shelf", feed: "feed", pomodoro: "pomodoro" };
+const ORB_BADGE = { agents: "agents", shelf: "shelf", feed: "feed", timer: "timer" };
 const ORB_LABELS = () => ({
-  terminal: t("terminal"), ai_term: t("ai_term"), pomodoro: t("pomodoro"), shelf: t("shelf"),
+  terminal: t("terminal"), timer: t("timer"), ai_term: t("ai_term"), pomodoro: t("pomodoro"), shelf: t("shelf"),
   monitor: t("monitor"), toggles: t("toggles"), agents: t("agents"), ai_apps: t("ai_apps"),
   format: t("formatter"), feed: t("notifications"), settings: t("settings"),
 });
@@ -242,6 +248,17 @@ function orbLayout(widgets) {
   return out;
 }
 
+// 링별 기존 배치의 역순으로 등장: 아래→위, 위→아래, 아래→위.
+function orbRevealRank(index, count) {
+  let start = 0;
+  for (const ring of ORB_RINGS) {
+    const end = Math.min(start + ring.cap, count);
+    if (index < end) return start + end - 1 - index;
+    start = end;
+  }
+  return index;
+}
+
 function buildOrb() {
   const root = $("#orb");
   const widgets = visibleWidgets();
@@ -254,7 +271,7 @@ function buildOrb() {
       : "";
     return `
     <div class="orb-item" data-w="${w}" data-i="${i}"
-         style="left:${p.x - half}px; top:${p.y - half}px; transition-delay:${i * 26}ms;">
+         style="left:${p.x - half}px; top:${p.y - half}px; --reveal-delay:${orbRevealRank(i, widgets.length) * 45}ms;">
       <div class="orb-circle">${IC[w] ?? ""}${badge}</div>
       <div class="orb-label">${ORB_LABELS()[w]}</div>
     </div>`;
@@ -278,26 +295,6 @@ function buildOrb() {
       invoke("open_popover", { widget: w, tileX: p.x });
     });
   });
-  // 오브 윈도우에도 파일 드롭 → 선반
-  listen("tauri://drag-drop", (e) => {
-    const paths = e.payload?.paths || [];
-    if (paths.length) invoke("shelf_add", { paths });
-  });
-  // 확장 상태는 Rust 폴링 결과를 40ms마다 invoke로 확인 (이벤트 채널 이중화)
-  let lastExpanded = null;
-  setInterval(async () => {
-    try {
-      const st = await invoke("orb_state");
-      if (st.expanded !== lastExpanded) {
-        lastExpanded = st.expanded;
-        document.body.classList.toggle("expanded", !!st.expanded);
-      }
-    } catch {}
-  }, 40);
-  listen("visibility-changed", async () => {
-    S.config = await invoke("get_config");
-    buildOrb();
-  });
   renderOrbBadges();
 }
 
@@ -318,7 +315,7 @@ function renderOrbBadges() {
 function renderPop() {
   const root = $("#pop");
   const R = {
-    pomodoro: popPomodoro, monitor: popMonitor, toggles: popToggles, agents: popAgents,
+    pomodoro: popTimer, timer: popTimer, monitor: popMonitor, toggles: popToggles, agents: popAgents,
     shelf: popShelf, format: popFormat, feed: popFeed, settings: popSettings, terminal: popTerminal,
     ai_term: popAiTerm, ai_apps: popAiApps,
   };
@@ -328,6 +325,7 @@ function renderPop() {
   bindPopActions();
   if (popWidget === "monitor") drawSpark();
   if (popWidget === "terminal") initTerm();
+  syncLocalTimerTick();
 }
 
 /* --- AI 런처 --- */
@@ -335,7 +333,7 @@ function popAiTerm() {
   const st = S.aiStatus || {};
   const row = (p, label, ok) => `
     <div class="list-item">
-      <div class="li-icon">${p === "codex" ? "⚙️" : "🟠"}</div>
+      <div class="li-icon">${p === "codex" ? brandImg("chatgpt") : brandImg("claude")}</div>
       <div class="li-main"><div class="li-title">${label}</div>
       <div class="li-sub">${ok ? "설치됨 · 터미널에서 실행" : t("not_installed")}</div></div>
       <button class="small ${ok ? "primary" : ""}" data-act="ai_cli" data-p="${p}" ${ok ? "" : "disabled"}>▶</button>
@@ -358,8 +356,8 @@ function popAiApps() {
     </div>`;
   return `
     <h2>${IC.ai_apps} ${t("ai_apps")}</h2>
-    ${row("claude", "Claude", "🟠", st.claude_app)}
-    ${row("chatgpt", "ChatGPT", "🟢", st.chatgpt_app)}
+    ${row("claude", "Claude", brandImg("claude"), st.claude_app)}
+    ${row("chatgpt", "ChatGPT", brandImg("chatgpt"), st.chatgpt_app)}
     <div class="stat-sub" style="margin-top:4px;">기본 브라우저/앱으로 실행됩니다.</div>`;
 }
 
@@ -375,8 +373,8 @@ function popClaude() {
 function launcherPopover(key, label, cliOk, guiOk) {
   const isClaude = key === "claude";
   const appName = isClaude ? "Claude" : "ChatGPT";
-  const cliIcon = isClaude ? "🟠" : "⚙️";
-  const guiIcon = isClaude ? "🟠" : "🟢";
+  const cliIcon = isClaude ? brandImg("claude") : brandImg("chatgpt");
+  const guiIcon = isClaude ? brandImg("claude") : brandImg("chatgpt");
   return `
     <h2>${label}</h2>
     <div class="sec">
@@ -529,96 +527,107 @@ function popTimer() {
 
   if (mode === "pomodoro") {
     const phaseTxt = p.phase === "break" ? t("brk") : t("focus");
-    body = \`
+    body = `
       <div class="sec" style="text-align:center; padding: 14px 10px;">
-        <div class="big-num \${p.phase === "break" ? "break" : "focus"}" id="tmr-display">\${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
+        <div class="big-num ${p.phase === "break" ? "break" : "focus"}" id="tmr-display">${p.running ? fmtTime(p.remaining_secs) : fmtTime(p.focus_min * 60)}</div>
         <div class="stat-sub" style="margin-top:6px;" id="tmr-status">
-          \${p.running ? (p.paused ? t("paused_txt") : "") + phaseTxt : t("waiting")} · \${t("round")} \${p.rounds_done}
+          ${p.running ? (p.paused ? t("paused_txt") : "") + phaseTxt : t("waiting")} · ${t("round")} ${p.rounds_done}
         </div>
       </div>
       <div class="sec">
-        <div class="row"><span class="rl">\${t("focus")}</span><span class="rs">\${p.focus_min} min</span></div>
-        <div class="row"><span class="rl">\${t("brk")}</span><span class="rs">\${p.break_min} min</span></div>
+        <div class="row"><span class="rl">${t("focus")}</span><span class="rs">${p.focus_min} min</span></div>
+        <div class="row"><span class="rl">${t("brk")}</span><span class="rs">${p.break_min} min</span></div>
       </div>
       <div class="sec">
-        <div class="lbl">\${t("presets")}</div>
+        <div class="lbl">${t("presets")}</div>
         <div class="btns" style="margin-top:2px;">
           <button class="small" data-act="pom_preset" data-f="25" data-b="5">25/5</button>
           <button class="small" data-act="pom_preset" data-f="50" data-b="10">50/10</button>
           <button class="small" data-act="pom_preset" data-f="15" data-b="5">15/5</button>
         </div>
-      </div>\`;
+      </div>`;
     btns = p.running
       ? (p.paused
-          ? \`<button class="primary" data-act="pom_resume">\${t("resume")}</button>\`
-          : \`<button data-act="pom_pause">\${t("pause")}</button>\`)
-      : \`<button class="primary" data-act="pom_start">\${t("start")}</button>\`;
-    btns += \`<button data-act="pom_reset">\${t("reset")}</button>\`;
+          ? `<button class="primary" data-act="pom_resume">${t("resume")}</button>`
+          : `<button data-act="pom_pause">${t("pause")}</button>`)
+      : `<button class="primary" data-act="pom_start">${t("start")}</button>`;
+    btns += `<button data-act="pom_reset">${t("reset")}</button>`;
   }
   else if (mode === "timer") {
     const elapsed = timerElapsedMs();
     const remainMs = Math.max(0, localTimer.durationSecs * 1000 - elapsed);
     const remainS = Math.ceil(remainMs / 1000);
-    body = \`
+    body = `
       <div class="sec" style="text-align:center; padding: 14px 10px;">
-        <div class="big-num" id="tmr-display">\${fmtTime(Math.ceil(remainMs / 1000))}</div>
-        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">\${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
+        <div class="big-num" id="tmr-display">${fmtTime(Math.ceil(remainMs / 1000))}</div>
+        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
       </div>
       <div class="sec">
-        <div class="lbl">\${t("presets")}</div>
+        <div class="lbl">${t("presets")}</div>
         <div class="btns" style="margin-top:2px;">
           <button class="small" data-act="tmr_set" data-s="60">1분</button>
           <button class="small" data-act="tmr_set" data-s="300">5분</button>
           <button class="small" data-act="tmr_set" data-s="600">10분</button>
           <button class="small" data-act="tmr_set" data-s="1800">30분</button>
         </div>
-      </div>\`;
+      </div>`;
     btns = localTimer.running
       ? (localTimer.paused
-          ? \`<button class="primary" data-act="tmr_resume">\${t("resume")}</button>\`
-          : \`<button data-act="tmr_pause">\${t("pause")}</button>\`)
-      : \`<button class="primary" data-act="tmr_start">\${t("start")}</button>\`;
-    btns += \`<button data-act="tmr_reset">\${t("reset")}</button>\`;
+          ? `<button class="primary" data-act="tmr_resume">${t("resume")}</button>`
+          : `<button data-act="tmr_pause">${t("pause")}</button>`)
+      : `<button class="primary" data-act="tmr_start">${t("start")}</button>`;
+    btns += `<button data-act="tmr_reset">${t("reset")}</button>`;
   }
   else if (mode === "stopwatch") {
     const elapsed = timerElapsedMs();
-    body = \`
+    body = `
       <div class="sec" style="text-align:center; padding: 14px 10px;">
-        <div class="big-num" id="tmr-display">\${fmtStopwatch(elapsed)}</div>
-        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">\${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
+        <div class="big-num" id="tmr-display">${fmtStopwatch(elapsed)}</div>
+        <div class="stat-sub" style="margin-top:6px;" id="tmr-status">${localTimer.running ? (localTimer.paused ? t("paused_txt") : "") : t("waiting")}</div>
       </div>
-      \${localTimer.laps.length ? \`<div class="sec"><div class="lbl">Laps</div>\${localTimer.laps.map((l, i) => \`<div class="row"><span class="rl">#\${i + 1}</span><span class="rs">\${fmtStopwatch(l)}</span></div>\`).join("")}</div>\` : ""}
-    \`;
-    btns = \`
+      ${localTimer.laps.length ? `<div class="sec"><div class="lbl">Laps</div>${localTimer.laps.map((l, i) => `<div class="row"><span class="rl">#${i + 1}</span><span class="rs">${fmtStopwatch(l)}</span></div>`).join("")}</div>` : ""}
+    `;
+    btns = `
       <div class="btns">
-        \${localTimer.running && !localTimer.paused
-          ? \`<button data-act="sw_lap">Lap</button>\`
-          : \`<button class="primary" data-act="sw_start">\${t("start")}</button>\`}
-        \${localTimer.running && localTimer.paused
-          ? \`<button class="primary" data-act="sw_resume">\${t("resume")}</button>\`
-          : \`<button data-act="sw_pause">\${t("pause")}</button>\`}
-        <button data-act="sw_reset">\${t("reset")}</button>
-      </div>\`;
+        ${localTimer.running && !localTimer.paused
+          ? `<button data-act="sw_lap">Lap</button>`
+          : `<button class="primary" data-act="sw_start">${t("start")}</button>`}
+        ${localTimer.running && localTimer.paused
+          ? `<button class="primary" data-act="sw_resume">${t("resume")}</button>`
+          : `<button data-act="sw_pause">${t("pause")}</button>`}
+        <button data-act="sw_reset">${t("reset")}</button>
+      </div>`;
   }
 
   const tabs = ["pomodoro", "timer", "stopwatch"].map((m) =>
-    \`<div style="flex:1; text-align:center; font-size:11px; font-weight:600; padding:6px 2px; border-radius:6px;
-      \${mode === m ? "background:rgba(255,255,255,.14); color:#fff;" : "color:var(--text-dim)"}"
-      data-act="mode_\${m}">\${m === "pomodoro" ? "포모" : m === "timer" ? "타이머" : "스톱워치"}</div>\`
+    `<div style="flex:1; text-align:center; font-size:11px; font-weight:600; padding:6px 2px; border-radius:6px;
+      ${mode === m ? "background:rgba(255,255,255,.14); color:#fff;" : "color:var(--text-dim)"}"
+      data-act="mode_${m}">${m === "pomodoro" ? "포모" : m === "timer" ? "타이머" : "스톱워치"}</div>`
   ).join("");
 
-  return \`
-    <h2>\${IC.timer} \${t("timer")}</h2>
+  return `
+    <h2>${IC.timer} ${t("timer")}</h2>
     <div class="sec" style="padding:6px;">
-      <div class="seg" style="display:flex;">\${tabs}</div>
+      <div class="seg" style="display:flex;">${tabs}</div>
     </div>
-    \${body}
-    <div class="btns">\${btns}</div>\`;
+    ${body}
+    <div class="btns">${btns}</div>`;
 }
 
 // 로컬 타이머/스톱워치 틱 (JS 전용, 100ms)
-setInterval(() => {
-  if (popWidget !== "timer" || !localTimer.running || localTimer.paused) return;
+let localTimerTick = null;
+function syncLocalTimerTick() {
+  const active = ["pomodoro", "timer"].includes(popWidget) && localTimer.mode !== "pomodoro"
+    && localTimer.running && !localTimer.paused;
+  if (active && localTimerTick === null) localTimerTick = setInterval(tickLocalTimer, 100);
+  if (!active && localTimerTick !== null) {
+    clearInterval(localTimerTick);
+    localTimerTick = null;
+  }
+}
+
+function tickLocalTimer() {
+  if (!["pomodoro", "timer"].includes(popWidget) || !localTimer.running || localTimer.paused) return;
   const el = $("#tmr-display");
   if (!el) return;
   const elapsed = timerElapsedMs();
@@ -627,10 +636,16 @@ setInterval(() => {
   } else if (localTimer.mode === "timer") {
     const remain = Math.max(0, localTimer.durationSecs * 1000 - elapsed);
     el.textContent = fmtTime(Math.ceil(remain / 1000));
+    if (remain <= 0) {
+      localTimer.running = false; localTimer.paused = false;
+      localTimer.startAt = null; localTimer.pausedElapsed = localTimer.durationSecs * 1000;
+      el.textContent = "00:00";
+      invoke("timer_done", { secs: localTimer.durationSecs }).catch(() => {});
+      renderPop();
+    }
   }
-}, 100);
+}
 
-function popTerminal() {/* --- 모니터 --- */
 function popMonitor() {
   const s = S.stats;
   if (!s) return `<h2>${IC.monitor} ${t("monitor")}</h2><div class="empty">${t("collecting")}</div>`;
@@ -873,7 +888,7 @@ function bindPopActions() {
             await invoke("open_popover", { widget: "terminal", tileX: ORB_GEO.cx });
             break;
           }
-          case act === "ai_gui": {
+          case act === "ai_gui" || act === "ai_app": {
             const key = el.dataset.n;
             const app = key === "claude" ? "Claude" : "ChatGPT";
             try {
@@ -899,6 +914,18 @@ function bindPopActions() {
           case act === "sh_clear": invoke("shelf_clear"); break;
           case act === "sh_move1": { const [ok, fail] = await invoke("shelf_move_to", { idx: i }); toast(`${t("moved")} ${ok} · ${t("failed")} ${fail}`); break; }
           case act === "sh_move_all": { const [ok, fail] = await invoke("shelf_move_to", {}); toast(`${t("moved")} ${ok} · ${t("failed")} ${fail}`); break; }
+          case act.startsWith("mode_"): {
+            localTimer.mode = act.slice(5);
+            renderPop();
+            break;
+          }
+          case act === "tmr_set": localTimer.durationSecs = Number(el.dataset.s) || 300; localTimer.running = false; localTimer.paused = false; localTimer.startAt = null; localTimer.pausedElapsed = 0; renderPop(); break;
+          case act === "tmr_start" || act === "sw_start": localTimer.running = true; localTimer.paused = false; localTimer.startAt = Date.now(); localTimer.pausedElapsed = 0; renderPop(); break;
+          case act === "tmr_pause" || act === "sw_pause": if (localTimer.running && !localTimer.paused) { localTimer.pausedElapsed = timerElapsedMs(); localTimer.paused = true; localTimer.startAt = null; } renderPop(); break;
+          case act === "tmr_resume" || act === "sw_resume": if (localTimer.running && localTimer.paused) { localTimer.startAt = Date.now(); localTimer.paused = false; } renderPop(); break;
+          case act === "tmr_reset": localTimer.running = false; localTimer.paused = false; localTimer.startAt = null; localTimer.pausedElapsed = 0; renderPop(); break;
+          case act === "sw_reset": localTimer.running = false; localTimer.paused = false; localTimer.startAt = null; localTimer.pausedElapsed = 0; localTimer.laps = []; renderPop(); break;
+          case act === "sw_lap": if (localTimer.running && !localTimer.paused) { localTimer.laps.unshift(timerElapsedMs()); renderPop(); } break;
           case act === "fmt_pretty": runFormat(true, null); break;
           case act === "fmt_min": runFormat(false, null); break;
           case act === "fmt_paste": {
@@ -943,13 +970,7 @@ function bindPopActions() {
       if (from !== to && $("#fmt-src").value.trim()) runFormat(true, to);
     });
   }
-  // 선반 팝오버에도 드롭 허용
-  if (popWidget === "shelf") {
-    listen("tauri://drag-drop", (e) => {
-      const paths = e.payload?.paths || [];
-      if (paths.length) invoke("shelf_add", { paths });
-    });
-  }
+
 }
 
 function segF(sel) { return document.querySelector(`${sel} .on`)?.dataset.f || "json"; }
@@ -981,19 +1002,19 @@ function toast(text) {
 /* ---------- 부팅 ---------- */
 async function boot() {
   await bindEvents();
+  S.config = await invoke("get_config");
   if (isOrb) {
     document.body.classList.add("orb-mode");
     $("#orb").classList.remove("hidden");
     buildOrb();
-    S.config = await invoke("get_config");
     invoke("orb_ready");
   } else if (popWidget) {
     document.body.classList.add("pop-mode");
     $("#pop").classList.remove("hidden");
     // 팝오버 초기 데이터 로드
-    if (popWidget === "pomodoro" || popWidget === "settings") S.config = await invoke("get_config");
+    if (["pomodoro", "timer"].includes(popWidget)) S.pomodoro = await invoke("pom_snapshot");
     if (popWidget === "settings") { try { S.version = await T.app.getVersion(); } catch { S.version = "?"; } }
-    if (popWidget === "codex" || popWidget === "claude") {
+    if (["codex", "claude", "ai_term", "ai_apps"].includes(popWidget)) {
       try { S.aiStatus = await invoke("ai_status"); } catch { S.aiStatus = {}; }
     }
     if (popWidget === "shelf") S.shelf = await invoke("shelf_list");
