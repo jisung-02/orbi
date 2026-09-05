@@ -98,3 +98,24 @@ func TestTermExitDrainsFinalOutput(t *testing.T) {
 		t.Fatalf("final output never drained: %q", remaining)
 	}
 }
+
+func TestTerminalReplayConsumesPendingWithoutLosingHistory(t *testing.T) {
+	termReset()
+	sess := &TermSession{scrollback: []byte("history\x1b[6n"), pending: []byte("history\x1b[6n")}
+	term.mu.Lock()
+	term.session = sess
+	term.mu.Unlock()
+	defer func() { term.mu.Lock(); term.session = nil; term.mu.Unlock() }()
+	if err := termEnsureForPanel(999999); err != nil {
+		t.Fatal(err)
+	}
+	sess.pendMu.Lock()
+	pending := len(sess.pending)
+	sess.pendMu.Unlock()
+	if pending != 0 {
+		t.Fatal("history would be sent again as live output")
+	}
+	if history, ok := termScrollback(); !ok || history != "history\x1b[6n" {
+		t.Fatal("history was lost during replay")
+	}
+}

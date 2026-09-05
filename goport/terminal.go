@@ -47,10 +47,23 @@ type termGuard struct {
 var term = &termGuard{}
 
 // 세션이 없으면 새로 띄운다. 셸은 $SHELL(기본 zsh) 로그인 셸, 홈 디렉터리에서 시작.
-func termEnsure() error {
+func termEnsure() error { return termEnsureForPanel(0) }
+
+func termEnsureForPanel(panelID int64) error {
 	term.mu.Lock()
 	defer term.mu.Unlock()
 	if term.session != nil {
+		if panelID != 0 {
+			sess := term.session
+			sess.sbMu.Lock()
+			sess.pendMu.Lock()
+			history := string(sess.scrollback)
+			sess.pending = nil
+			sess.pendMu.Unlock()
+			sess.sbMu.Unlock()
+			// Queue history before the flusher can publish newer output.
+			emitTo(panelID, "term-history", history)
+		}
 		return nil
 	}
 	shell := os.Getenv("SHELL")
@@ -103,7 +116,6 @@ func termEnsure() error {
 					over := len(sess.scrollback) - scrollbackCap
 					sess.scrollback = append(sess.scrollback[:0], sess.scrollback[over:]...)
 				}
-				sess.sbMu.Unlock()
 				sess.pendMu.Lock()
 				sess.pending = append(sess.pending, chunk...)
 				if len(sess.pending) > pendingCap+drainBatch {
@@ -111,6 +123,7 @@ func termEnsure() error {
 					sess.pending = append(sess.pending[:0], sess.pending[over:]...)
 				}
 				sess.pendMu.Unlock()
+				sess.sbMu.Unlock()
 				select {
 				case sess.outputReady <- struct{}{}:
 				default:

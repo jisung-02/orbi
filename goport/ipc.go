@@ -417,14 +417,7 @@ func cmdClearFeed(st *AppState, _ Args, _ int64) (any, error) { return feedClear
 // ---------- 터미널 ----------
 
 func cmdTermInit(_ *AppState, _ Args, panelID int64) (any, error) {
-	if err := termEnsure(); err != nil {
-		return nil, err
-	}
-	// 팝오버가 닫혀 있던 동안의 출력을 한 번에 내려준다
-	if buf, ok := termScrollback(); ok && buf != "" {
-		emitTo(panelID, "term-out", buf)
-	}
-	return nil, nil
+	return nil, termEnsureForPanel(panelID)
 }
 
 func cmdTermWrite(_ *AppState, a Args, _ int64) (any, error) {

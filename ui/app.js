@@ -454,17 +454,9 @@ async function initTerm() {
     if (e.key.toLowerCase() === "w") { invoke("close_popover"); return false; }
     return true;
   });
-  let pendingOut = "";
-  let rafId = null;
-  await listen("term-out", (e) => {
-    pendingOut += e.payload;
-    if (!rafId) {
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        if (pendingOut) { term.write(pendingOut); pendingOut = ""; }
-      });
-    }
-  });
+  const writeOutput = terminalOutputWriter(term);
+  await listen("term-out", (e) => writeOutput(e.payload, false));
+  await listen("term-history", (e) => writeOutput(e.payload, true));
   await listen("term-exit", () => term.write("\r\n\x1b[90m" + t("term_exit_msg") + "\r\n"));
   try { await invoke("term_init"); } catch (e) { term.write(`\r\n\x1b[31m${e}\r\n`); }
   const fit = () => {
@@ -475,6 +467,30 @@ async function initTerm() {
   };
   setTimeout(() => { fit(); term.focus(); }, 60);
   window.addEventListener("resize", fit);
+}
+
+// Replay rendering commands without answering old device/status queries again.
+// Live queries still reach xterm's normal handlers (required by full-screen CLIs).
+function terminalOutputWriter(term) {
+  let replaying = false;
+  let writing = false;
+  const queue = [];
+  for (const prefix of ['', '?', '>', '=']) {
+    for (const final of ['n', 'c']) {
+      term.parser.registerCsiHandler({ ...(prefix ? { prefix } : {}), final }, () => replaying);
+    }
+  }
+  for (const identifier of [10, 11, 12]) {
+    term.parser.registerOscHandler(identifier, data => replaying && data === '?');
+  }
+  function drain() {
+    if (writing || !queue.length) return;
+    const next = queue.shift();
+    writing = true;
+    replaying = next.history;
+    term.write(next.data, () => { replaying = false; writing = false; drain(); });
+  }
+  return (data, history = false) => { queue.push({ data, history }); drain(); };
 }
 
 function setTermFont(term, size) {

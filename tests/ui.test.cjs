@@ -127,3 +127,45 @@ test('orb collapse reverses reveals and outer ring fills from one end', async ()
   assert.equal(delays.length, 11);
   assert.ok(delays.every(m => Number(m[1]) + Number(m[2]) === 450));
 });
+
+test('terminal history suppresses stale responses but preserves live queries', async () => {
+  const a = await app('orb');
+  const csi = new Map(), osc = new Map(), writes = [], callbacks = [];
+  a.context.fakeTerm = {
+    parser: {
+      registerCsiHandler: (id, fn) => csi.set((id.prefix || '')+id.final, fn),
+      registerOscHandler: (id, fn) => osc.set(id, fn)
+    },
+    write: (data, cb) => { writes.push(data); callbacks.push(cb); }
+  };
+  a.run('writeTestOutput = terminalOutputWriter(fakeTerm); writeTestOutput("history", true); writeTestOutput("live", false)');
+  assert.equal(csi.get('n')(), true);
+  assert.equal(csi.get('c')(), true);
+  assert.equal(osc.get(11)('?'), true);
+  assert.equal(osc.get(11)('rgb:0000/0000/0000'), false);
+  assert.deepEqual(writes, ['history']);
+  callbacks.shift()();
+  assert.deepEqual(writes, ['history', 'live']);
+  assert.equal(csi.get('n')(), false);
+  assert.equal(osc.get(11)('?'), false);
+  callbacks.shift()();
+});
+
+test('bundled xterm emits cursor replies only for live output', async () => {
+  global.self = global;
+  const { Terminal } = require('../ui/vendor/xterm.js');
+  const term = new Terminal();
+  const replies = [];
+  term.onData(data => replies.push(data));
+  try {
+    const a = await app('orb');
+    a.context.realTerm = term;
+    const write = a.run('terminalOutputWriter(realTerm)');
+    write('\x1b[6n\x1b]11;?\x07\x1b]10;?\x1b\\', true);
+    await new Promise(resolve => term.write('', resolve));
+    assert.deepEqual(replies, []);
+    write('\x1b[6n', false);
+    await new Promise(resolve => term.write('', resolve));
+    assert.deepEqual(replies, ['\x1b[1;1R']);
+  } finally { term.dispose(); }
+});
