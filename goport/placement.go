@@ -190,7 +190,7 @@ func (st *AppState) followPopoverToScreen(screen Rect) {
 		x = screen.X + (screen.W-w)/2
 		y = screen.Y + 90
 	}
-	PanelApply(id, Rect{X: x, Y: y, W: w, H: h}, popoverLevel)
+	PanelApply(id, Rect{X: x, Y: y, W: w, H: h}, popoverLevelFor(widget))
 }
 
 // 배치 폴링: 커서 화면 이동/디스플레이 구성 변경 시 오브 위치 갱신
@@ -295,7 +295,7 @@ func orbLoop(st *AppState) {
 		if expandNow {
 			// 팝오버가 열려 있는 상태로 오브를 다시 호버하면 열려 있던 것을 닫는다
 			st.popoverMu.Lock()
-			hadPop := st.popover != ""
+			hadPop := st.popover != "" && !isPinnedWidget(st.popWidget)
 			st.popoverMu.Unlock()
 			if hadPop {
 				closeCurrentPopover(st)
@@ -331,4 +331,13 @@ func orbShouldCollapse(expanded, inside bool, leftAt *time.Time, now time.Time) 
 		return false
 	}
 	return now.Sub(*leftAt) >= 250*time.Millisecond
+}
+
+// File drop destinations must stay below macOS dragging windows (level 500).
+// Status-window level keeps the shelf above ordinary apps and the Dock.
+func popoverLevelFor(widget string) int64 {
+	if widget == "shelf" {
+		return 25
+	}
+	return popoverLevel
 }

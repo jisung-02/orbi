@@ -23,7 +23,16 @@ var panels: [Int64: DUWin] = [:]
 
 // borderless 패널은 기본 canBecomeKey=false → 터미널 타이핑이 안 된다.
 // nonactivating 특성은 유지한 채 키 포커스를 받을 수 있게 허용한다.
-final class DUPanel: NSPanel {
+final class DUPanel: NSPanel, NSDraggingDestination {
+    var acceptsShelfFiles = false
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        NSLog("[shelf-drop] window entered shelf=%d", acceptsShelfFiles ? 1 : 0)
+        return acceptsShelfFiles ? shelfDragOperation(sender) : []
+    }
+    func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { acceptsShelfFiles ? shelfDragOperation(sender) : [] }
+    func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { acceptsShelfFiles && !shelfDragOperation(sender).isEmpty }
+    func performDragOperation(_ sender: NSDraggingInfo) -> Bool { acceptsShelfFiles && receiveShelfDrop(sender) }
+
     override var canBecomeKey: Bool { true }
 
     // 비활성(키 아님) 상태에서 AppKit이 첫 클릭을 '창 활성화'로 낚아채는 것을 막고

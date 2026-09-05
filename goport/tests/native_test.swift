@@ -1,5 +1,8 @@
 import Cocoa
 
+@_silgen_name("du_test_last_message")
+func lastNativeMessage() -> UnsafePointer<CChar>
+
 @main
 struct NativeTests {
     static var failures = 0
@@ -97,6 +100,42 @@ struct NativeTests {
         check(circles.allSatisfy { $0.opacity == 1 && $0.animationKeys()?.count == 1 }, "rapid reentry replaces collapse animations")
         let (card, _) = nativePopoverController("settings", size: NSSize(width: 300, height: 500))
         check((card.layer?.backgroundColor?.alpha ?? 0) >= 0.8, "popover retains its own translucent surface")
+        let shelf = ShelfPopoverController.shared
+        let fixtures: [[String: Any]] = (0..<30).map { ["name": "file-\($0).txt", "path": "/tmp/file-\($0).txt", "size_mb": 1.0] }
+        shelf.update(list: fixtures)
+        let shelfRows = descendants(shelf.view).compactMap { $0 as? ShelfFileRow }
+        check(shelfRows.count == 30, "shelf keeps all rows accessible instead of truncating at eight")
+        let viewport = descendants(shelf.view).compactMap { $0 as? ShelfScrollView }.first
+        check(viewport?.hasVerticalScroller == true && (viewport?.documentView?.frame.height ?? 0) > (viewport?.contentSize.height ?? 0), "shelf overflow scrolls")
+        check(viewport?.registeredDraggedTypes.contains(.fileURL) == true, "viewport accepts file drops")
+        for row in shelfRows {
+            check(row.registeredDraggedTypes.contains(.fileURL) && row.fileURL != nil, "each row receives files and supplies an outgoing file URL")
+            let buttons = row.subviews.compactMap { $0 as? NSButton }.sorted { $0.frame.minX < $1.frame.minX }
+            check(buttons.count == 5 && row.subviews.allSatisfy { row.bounds.contains($0.frame) }, "row labels and actions fit within the card")
+            for i in 1..<buttons.count { check(buttons[i-1].frame.maxX <= buttons[i].frame.minX, "row actions never overlap") }
+        }
+        shelf.update(list: [])
+        check(descendants(shelf.view).compactMap { $0 as? ShelfFileRow }.isEmpty, "clearing shelf removes all rows")
+        let fileDrag = ShelfDragFixture()
+        fileDrag.draggingPasteboard.writeObjects([URL(fileURLWithPath: "/tmp/선반 테스트.txt") as NSURL])
+        let dropRoot = ShelfDropView(frame: .zero)
+        check(dropRoot.draggingEntered(fileDrag) == .copy, "file drag enters shelf")
+        check(dropRoot.prepareForDragOperation(fileDrag), "shelf approves the drop before importing files")
+        check(viewport!.prepareForDragOperation(fileDrag), "scroll viewport approves the drop before importing files")
+        check(dropRoot.performDragOperation(fileDrag), "shelf imports a released file drag")
+        let request = String(cString: lastNativeMessage()).data(using: .utf8)!
+        let requestObject = try! JSONSerialization.jsonObject(with: request) as! [String: Any]
+        check(requestObject["cmd"] as? String == "shelf_add", "file drop dispatches shelf_add to Go")
+        check((requestObject["args"] as? [String: Any])?["paths"] as? [String] == ["/tmp/선반 테스트.txt"], "drop preserves Unicode and spaces in file paths")
+        fileDrag.draggingPasteboard.clearContents()
+        fileDrag.draggingPasteboard.setPropertyList(["/tmp/legacy-file.txt"], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        check(dropRoot.draggingEntered(fileDrag) == .copy && shelfURLs(fileDrag.draggingPasteboard).count == 1, "legacy Finder file lists are accepted")
+        let window = DUPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 440), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        window.acceptsShelfFiles = true
+        check(window.prepareForDragOperation(fileDrag) && window.performDragOperation(fileDrag), "panel provides fallback file drop destination")
+        fileDrag.draggingPasteboard.clearContents()
+        fileDrag.draggingPasteboard.setString("not a file", forType: .string)
+        check(dropRoot.draggingEntered(fileDrag).isEmpty && !window.prepareForDragOperation(fileDrag), "non-file drags are rejected")
         print("Native tests: \(failures) failure(s)")
         exit(failures == 0 ? 0 : 1)
     }

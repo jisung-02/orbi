@@ -629,9 +629,9 @@ func cmdOpenPopover(st *AppState, a Args, _ int64) (any, error) {
 	// 터미널만 웹(xterm.js + Go PTY) 유지 — SwiftTerm forkpty 스폰이 불안정.
 	// 그 외 위젯은 전부 네이티브 AppKit 뷰 (JS 없음).
 	if native {
-		PanelCreateNative(id, widget, x, y, w, h, popoverLevel, false, true)
+		PanelCreateNative(id, widget, x, y, w, h, popoverLevelFor(widget), false, true)
 	} else {
-		PanelCreate(id, label, shimFor(label), x, y, w, h, false, popoverLevel, true)
+		PanelCreate(id, label, shimFor(label), x, y, w, h, false, popoverLevelFor(widget), true)
 	}
 	PanelPinSpaces(id)
 	PanelFocus(id)

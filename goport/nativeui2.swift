@@ -432,138 +432,168 @@ final class AgentsPopoverController: NSObject, NativePopover {
 // ---------- 선반 ----------
 
 final class ShelfPopoverController: NSObject, NativePopover {
-    static let shared: ShelfPopoverController = {
-        let c = ShelfPopoverController()
-        c.build()
-        return c
-    }()
+    static let shared = ShelfPopoverController()
     private(set) var view: NSView = ShelfDropView(frame: NSRect(x: 0, y: 0, width: 400, height: 440))
-    private var rowsStack: NSView!
-    private var emptyLabel: NSTextField!
-    private var totalLabel: NSTextField!
-    private var list: [[String: Any]] = []
+    private let scroll = ShelfScrollView()
+    private let rowsStack = ShelfDropView()
+    private let emptyLabel = duLabel("파일을 이곳에 끌어다 놓으세요", 12, 0.7)
+    private let totalLabel = duLabel("", 11, 0.6)
+    private let statusLabel = duLabel("파일명을 Finder로 드래그하면 복사됩니다", 10, 0.6)
 
-    private func build() {
-        NSLog("[shelf] build 1")
+    override init() {
+        super.init()
         let title = duLabel("파일 선반", 14, 0.95, bold: true)
-        title.frame = NSRect(x: 20, y: view.frame.height - 40, width: 160, height: 20)
+        title.frame = NSRect(x: 20, y: 400, width: 140, height: 20)
         view.addSubview(title)
-        NSLog("[shelf] build 2")
-        totalLabel = duLabel("", 11, 0.6)
-        totalLabel.frame = NSRect(x: 180, y: view.frame.height - 38, width: 200, height: 16)
+        totalLabel.frame = NSRect(x: 170, y: 400, width: 210, height: 18)
         totalLabel.alignment = .right
         view.addSubview(totalLabel)
-        NSLog("[shelf] build 3")
-
-        rowsStack = NSView(frame: NSRect(x: 12, y: 64, width: view.frame.width - 24, height: view.frame.height - 104))
-        view.addSubview(rowsStack)
-        NSLog("[shelf] build 4")
-
-        emptyLabel = duLabel("파일을 끌어다 놓으세요\n(임시 보관 후 한 번에 이동)", 12, 0.6)
-        emptyLabel.frame = NSRect(x: 20, y: view.frame.height / 2 - 20, width: 360, height: 44)
+        scroll.frame = NSRect(x: 12, y: 76, width: 376, height: 310)
+        scroll.hasVerticalScroller = true
+        scroll.scrollerStyle = .overlay
+        scroll.drawsBackground = false
+        scroll.documentView = rowsStack
+        view.addSubview(scroll)
+        emptyLabel.frame = NSRect(x: 20, y: 222, width: 360, height: 20)
         emptyLabel.alignment = .center
         view.addSubview(emptyLabel)
-
-        let b1 = duButton("모두 이동") { NativeUI.shared.invoke("shelf_move_to") }
-        b1.frame = NSRect(x: 14, y: 26, width: 100, height: 28)
-        view.addSubview(b1)
-        let b2 = duButton("모두 복사") { NativeUI.shared.invoke("shelf_copy") }
-        b2.frame = NSRect(x: 120, y: 26, width: 100, height: 28)
-        view.addSubview(b2)
-        let b3 = duButton("비우기") { NativeUI.shared.invoke("shelf_clear") }
-        b3.frame = NSRect(x: 226, y: 26, width: 90, height: 28)
-        view.addSubview(b3)
-        NSLog("[shelf] build 5 done")
+        for (i, definition) in [("모두 이동", "shelf_move_to"), ("모두 복사", "shelf_copy"), ("비우기", "shelf_clear")].enumerated() {
+            let button = duButton(definition.0) { [weak self] in self?.perform(definition.1) }
+            button.frame = NSRect(x: 16 + CGFloat(i)*124, y: 38, width: 120, height: 28)
+            view.addSubview(button)
+        }
+        statusLabel.frame = NSRect(x: 16, y: 12, width: 368, height: 16)
+        statusLabel.alignment = .center
+        view.addSubview(statusLabel)
     }
 
-    private func clearRows() {
-        rowsStack.subviews.forEach { $0.removeFromSuperview() }
+    private func perform(_ command: String, args: [String: Any] = [:]) {
+        NativeUI.shared.invoke(command, args) { [weak self] value, error in
+            guard let self else { return }
+            if let error { self.statusLabel.stringValue = error; return }
+            if command == "shelf_copy" {
+                self.statusLabel.stringValue = "파일 참조를 복사했습니다. Finder에서 붙여넣으세요."
+            } else if command == "shelf_move_to", let counts = value as? [Int], counts.count == 2 {
+                self.statusLabel.stringValue = "이동 완료 \(counts[0])개 · 실패 \(counts[1])개"
+            }
+        }
     }
 
-    private func makeRow(_ it: [String: Any], idx: Int) -> NSView {
-        let row = NSView(frame: NSRect(x: 0, y: 0, width: view.frame.width - 40, height: 40))
+    private func makeRow(_ item: [String: Any], idx: Int) -> NSView {
+        let row = ShelfFileRow(frame: NSRect(x: 0, y: 0, width: 376, height: 66))
+        row.fileURL = (item["path"] as? String).map { URL(fileURLWithPath: $0) }
         row.wantsLayer = true
         row.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
         row.layer?.cornerRadius = 8
-
-        let isDir = it["is_dir"] as? Bool ?? false
-        let name = it["name"] as? String ?? "?"
-        let mb = it["size_mb"] as? Double ?? 0
-        let icon = duLabel(isDir ? "📁" : "📄", 14)
-        icon.frame = NSRect(x: 8, y: 10, width: 20, height: 20)
+        let icon = duLabel((item["is_dir"] as? Bool ?? false) ? "📁" : "📄", 15)
+        icon.frame = NSRect(x: 10, y: 38, width: 24, height: 20)
+        icon.unregisterDraggedTypes()
         row.addSubview(icon)
-        let nameL = duLabel(name + (isDir ? "" : "  \(mb)MB"), 11.5, 0.9)
-        nameL.frame = NSRect(x: 32, y: 12, width: 118, height: 16)
-        nameL.cell?.truncatesLastVisibleLine = true
-        nameL.cell?.wraps = false
-        row.addSubview(nameL)
-
-        var x = row.frame.width - 8
-        let defs: [(String, String)] = [("✕", "shelf_remove"), ("🔍", "shelf_reveal"), ("이동", "shelf_move_to"), ("복사", "shelf_copy"), ("열기", "shelf_open")]
-        for (title, cmd) in defs.reversed() {
-            let w: CGFloat = title.count > 1 ? 40 : 26
-            x -= w
-            let b = duButton(title, action: {
-                var args: [String: Any] = [:]
-                if cmd != "shelf_clear" { args["idx"] = idx }
-                NativeUI.shared.invoke(cmd, args)
-            }, small: true)
-            b.frame = NSRect(x: x, y: 7, width: w, height: 24)
-            row.addSubview(b)
-            x -= 2
+        let name = duLabel(item["name"] as? String ?? "?", 12, 0.95)
+        name.frame = NSRect(x: 38, y: 40, width: 324, height: 18)
+        name.cell?.truncatesLastVisibleLine = true
+        name.cell?.wraps = false
+        name.toolTip = item["path"] as? String
+        name.unregisterDraggedTypes()
+        row.addSubview(name)
+        let definitions = [("열기", "shelf_open"), ("복사", "shelf_copy"), ("이동", "shelf_move_to"), ("Finder", "shelf_reveal"), ("제거", "shelf_remove")]
+        for (i, definition) in definitions.enumerated() {
+            let button = duButton(definition.0) { [weak self] in
+                self?.perform(definition.1, args: ["idx": idx])
+            }
+            button.frame = NSRect(x: 10 + CGFloat(i)*72, y: 7, width: 66, height: 24)
+            row.addSubview(button)
         }
         return row
     }
 
     func update(list: [[String: Any]]) {
-        NSLog("[shelf] update n=%d", list.count)
-        self.list = list
-        NSLog("[shelf] update clearRows")
-        clearRows()
-        NSLog("[shelf] update empty=%d", emptyLabel.isHidden ? 0 : 1)
+        rowsStack.subviews.forEach { $0.removeFromSuperview() }
         emptyLabel.isHidden = !list.isEmpty
         let total = list.reduce(0.0) { $0 + ($1["size_mb"] as? Double ?? 0) }
         totalLabel.stringValue = list.isEmpty ? "" : "\(list.count)개 · \(String(format: "%.1f", total))MB"
-        NSLog("[shelf] update total ok")
-        for (i, it) in list.prefix(8).enumerated() {
-            NSLog("[shelf] update row %d", i)
-            let row = makeRow(it, idx: i)
-            row.frame.origin = NSPoint(x: 0, y: rowsStack.frame.height - 44 - CGFloat(i) * 44)
+        let height = max(scroll.contentSize.height, CGFloat(list.count)*72)
+        rowsStack.frame = NSRect(x: 0, y: 0, width: 376, height: height)
+        for (i, item) in list.enumerated() {
+            let row = makeRow(item, idx: i)
+            row.frame.origin = NSPoint(x: 0, y: height - 72 - CGFloat(i)*72)
             rowsStack.addSubview(row)
         }
-        NSLog("[shelf] update done")
+        rowsStack.scroll(NSPoint(x: 0, y: max(0, height-scroll.contentSize.height)))
     }
 
     func onOpen() {
         NativeUI.shared.invoke("shelf_list") { [weak self] value, _ in
-            DispatchQueue.main.async {
-                if let list = value as? [[String: Any]] { self?.update(list: list) }
-            }
+            if let list = value as? [[String: Any]] { self?.update(list: list) }
         }
     }
 }
 
-// 드래그&드롭 가능한 선반 뷰
-final class ShelfDropView: NSView {
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        registerForDraggedTypes([.fileURL])
+let shelfDragTypes: [NSPasteboard.PasteboardType] = [.fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType")]
+
+func shelfURLs(_ pasteboard: NSPasteboard) -> [URL] {
+    let urls = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    if !urls.isEmpty { return urls }
+    let paths = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String] ?? []
+    return paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) }
+}
+
+func shelfDragOperation(_ sender: NSDraggingInfo) -> NSDragOperation {
+    let count = shelfURLs(sender.draggingPasteboard).count
+    sender.numberOfValidItemsForDrop = count
+    return count > 0 ? .copy : []
+}
+
+func receiveShelfDrop(_ sender: NSDraggingInfo) -> Bool {
+    let paths = shelfURLs(sender.draggingPasteboard).map { $0.path }
+    NSLog("[shelf-drop] import count=%d", paths.count)
+    guard !paths.isEmpty else { return false }
+    NativeUI.shared.invoke("shelf_add", ["paths": paths]) { value, error in
+        NSLog("[shelf-drop] reply count=%d error=%d", (value as? [Any])?.count ?? 0, error == nil ? 0 : 1)
+        if let list = value as? [[String: Any]] { ShelfPopoverController.shared.update(list: list) }
     }
+    return true
+}
+
+// Register both the viewport and its document so scrolling never intercepts file drops.
+final class ShelfScrollView: NSScrollView {
+    override init(frame: NSRect) { super.init(frame: frame); registerForDraggedTypes(shelfDragTypes) }
     required init?(coder: NSCoder) { fatalError("unsupported") }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { shelfDragOperation(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { !shelfDragOperation(sender).isEmpty }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { receiveShelfDrop(sender) }
+}
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+class ShelfDropView: NSView {
+    override init(frame: NSRect) { super.init(frame: frame); registerForDraggedTypes(shelfDragTypes) }
+    required init?(coder: NSCoder) { fatalError("unsupported") }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { shelfDragOperation(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { draggingEntered(sender) }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { !shelfDragOperation(sender).isEmpty }
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool { receiveShelfDrop(sender) }
+}
 
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
-                                                        options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        let paths = urls.compactMap { $0.path }
-        guard !paths.isEmpty else { return false }
-        if let data = try? JSONSerialization.data(withJSONObject: paths),
-           let json = String(data: data, encoding: .utf8) {
-            dockutil_on_drop(-1, (json as NSString).utf8String!)
-        }
-        return true
+final class ShelfFileRow: ShelfDropView, NSDraggingSource {
+    var fileURL: URL?
+    private var dragOrigin: NSPoint?
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard let hit = super.hitTest(point) else { return nil }
+        return hit is NSButton ? hit : self
     }
+    override func mouseDown(with event: NSEvent) { dragOrigin = event.locationInWindow }
+    override func mouseUp(with event: NSEvent) { dragOrigin = nil }
+    override func mouseDragged(with event: NSEvent) {
+        guard let origin = dragOrigin, let url = fileURL,
+              hypot(event.locationInWindow.x-origin.x, event.locationInWindow.y-origin.y) >= 4 else { return }
+        dragOrigin = nil
+        let item = NSDraggingItem(pasteboardWriter: url as NSURL)
+        let point = convert(event.locationInWindow, from: nil)
+        item.setDraggingFrame(NSRect(x: point.x-16, y: point.y-16, width: 32, height: 32), contents: NSWorkspace.shared.icon(forFile: url.path))
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation { .copy }
 }
 
 // ---------- 피드 ----------
@@ -1041,6 +1071,16 @@ public func du_panel_create_native(_ id: Int64, _ kind: UnsafePointer<CChar>!,
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 panel.makeKeyAndOrderFront(nil)
             }
+        }
+        if k == "shelf" {
+            panel.acceptsShelfFiles = true
+            panel.registerForDraggedTypes(shelfDragTypes)
+            // Noneditable labels must not intercept file drags as text drops.
+            func registerDestinations(_ view: NSView) {
+                if view is NSTextField || view is NSButton || view is NSClipView { view.unregisterDraggedTypes() }
+                for child in view.subviews { registerDestinations(child) }
+            }
+            registerDestinations(content)
         }
         NativeUI.shared.attach(id: id, kind: k, orb: orb)
     }
