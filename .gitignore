@@ -3,3 +3,6 @@ node_modules/
 .DS_Store
 *.log
 src-tauri/gen/
+goport/dock-util
+goport/libdu_shell.dylib
+goport/dockutil
