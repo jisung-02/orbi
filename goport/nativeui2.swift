@@ -986,6 +986,13 @@ func nativePopoverController(_ kind: String, size: NSSize) -> (NSView, (() -> Vo
     default: c = SettingsPopoverController.shared
     }
     c.view.frame = NSRect(origin: .zero, size: size)
+    c.view.wantsLayer = true
+    c.view.appearance = NSAppearance(named: .darkAqua)
+    c.view.layer?.backgroundColor = NSColor(calibratedRed: 0.28, green: 0.29, blue: 0.32, alpha: 0.86).cgColor
+    c.view.layer?.cornerRadius = 18
+    c.view.layer?.borderWidth = 0.5
+    c.view.layer?.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
+    c.view.layer?.masksToBounds = true
     return (c.view, { c.onOpen() })
 }
 

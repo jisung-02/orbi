@@ -67,3 +67,15 @@ func TestDiskFreeIsAvailable(t *testing.T) {
 		t.Fatalf("disk free=%v", gb)
 	}
 }
+
+func TestOuterRingFillsFromLowerEnd(t *testing.T) {
+	for count := 9; count <= 11; count++ {
+		for offset := 0; offset < count-8; offset++ {
+			x, y := orbCircleCenter(Rect{}, count-1-offset, count)
+			angle := math.Atan2(y-orbCY, x-orbCX) * 180 / math.Pi
+			if math.Abs(angle-(172-float64(offset)*25)) > 0.001 {
+				t.Fatalf("count %d offset %d: angle %v", count, offset, angle)
+			}
+		}
+	}
+}

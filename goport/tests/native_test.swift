@@ -83,8 +83,20 @@ struct NativeTests {
                 }
             }
         }
+        check(circles.allSatisfy { ($0.backgroundColor?.alpha ?? 0) >= 0.7 }, "orb buttons retain a readable translucent background")
+        if circles.count == 11 {
+            check(circles[8...].allSatisfy { $0.frame.midX < 220 }, "third ring is packed toward the lower left")
+        }
         fan.setExpanded(false)
-        check(circles.allSatisfy { $0.isHidden && $0.animation(forKey: "orb-reveal") == nil }, "collapse cancels pending reveals")
+        let hiddenOrder = circles.sorted {
+            ($0.animation(forKey: "orb-reveal")?.beginTime ?? 0) < ($1.animation(forKey: "orb-reveal")?.beginTime ?? 0)
+        }
+        check(zip(hiddenOrder, ordered.reversed()).allSatisfy { $0 === $1 }, "collapse reverses the complete reveal sequence")
+        check(circles.allSatisfy { $0.opacity == 0 && $0.animation(forKey: "orb-reveal") != nil }, "collapse fades instead of hiding immediately")
+        fan.setExpanded(true)
+        check(circles.allSatisfy { $0.opacity == 1 && $0.animationKeys()?.count == 1 }, "rapid reentry replaces collapse animations")
+        let (card, _) = nativePopoverController("settings", size: NSSize(width: 300, height: 500))
+        check((card.layer?.backgroundColor?.alpha ?? 0) >= 0.8, "popover retains its own translucent surface")
         print("Native tests: \(failures) failure(s)")
         exit(failures == 0 ? 0 : 1)
     }

@@ -113,3 +113,17 @@ test('local timer schedules ticks only while running', async () => {
   await a.click('tmr_reset');
   assert.equal(a.timers.size, 0);
 });
+
+test('orb collapse reverses reveals and outer ring fills from one end', async () => {
+  const a = await app('orb');
+  a.run('S.config.hidden_widgets = []; buildOrb()');
+  for (const count of [9, 10, 11]) {
+    const positions = a.run(`orbLayout(Array(${count}).fill('widget'))`);
+    const angles = positions.slice(8).map(p => Math.round(Math.atan2(264-p.y, p.x-336)*180/Math.PI));
+    assert.deepEqual(Array.from(angles).reverse(), [172, 147, 122].slice(0, count-8));
+  }
+  const html = a.elements.get('#orb').innerHTML;
+  const delays = [...html.matchAll(/--reveal-delay:(\d+)ms; --hide-delay:(\d+)ms/g)];
+  assert.equal(delays.length, 11);
+  assert.ok(delays.every(m => Number(m[1]) + Number(m[2]) === 450));
+});

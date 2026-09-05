@@ -213,7 +213,7 @@ private func orbFanLayout(count: Int) -> [CGPoint] {
         if idx >= count { break }
         let n = min(ring.cap, count - idx)
         for i in 0..<n {
-            let deg = n == 1 ? (ring.from + ring.to) / 2 : ring.from + ((ring.to - ring.from) * Double(i)) / Double(n - 1)
+            let deg = ring.r == 240 ? 172 - Double(n - 1 - i) * 25 : (n == 1 ? (ring.from + ring.to) / 2 : ring.from + ((ring.to - ring.from) * Double(i)) / Double(n - 1))
             let rad = deg * .pi / 180
             let x = Double(geo.x) + ring.r * cos(rad)
             let y = Double(geo.y) - ring.r * sin(rad)
@@ -263,11 +263,11 @@ final class OrbFanView: NSView {
 
         centerLayer.frame = CGRect(x: 336 - 28, y: frame.height - 264 - 28, width: 56, height: 56)
         centerLayer.cornerRadius = 28
-        centerLayer.backgroundColor = NSColor(white: 1, alpha: 0.22).cgColor
+        centerLayer.backgroundColor = NSColor(calibratedWhite: 0.38, alpha: 0.78).cgColor
         centerLayer.borderColor = NSColor.white.withAlphaComponent(0.55).cgColor
         centerLayer.borderWidth = 1
         if let img = NSImage(systemSymbolName: "circle.dotted", accessibilityDescription: nil) {
-            let conf = NSImage.SymbolConfiguration(pointSize: 20, weight: .light)
+            let conf = NSImage.SymbolConfiguration(pointSize: 20, weight: .thin)
             centerLayer.contents = img.withSymbolConfiguration(conf) ?? img
             centerLayer.contentsGravity = .center
         }
@@ -321,10 +321,14 @@ final class OrbFanView: NSView {
             let item = CALayer()
             item.frame = CGRect(x: cx - 23, y: cy - 23, width: 46, height: 46)
             item.cornerRadius = 23
-            item.backgroundColor = NSColor(white: 1, alpha: 0.0).cgColor
             item.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
             item.borderWidth = 0.5
-            item.backgroundColor = NSColor(calibratedWhite: 0.35, alpha: 0.42).cgColor
+            item.backgroundColor = NSColor(calibratedRed: 0.34, green: 0.35, blue: 0.38, alpha: 0.78).cgColor
+            item.shadowColor = NSColor.black.cgColor
+            item.shadowOpacity = 0.18
+            item.shadowRadius = 8
+            item.shadowOffset = CGSize(width: 0, height: -3)
+            item.shadowPath = CGPath(ellipseIn: item.bounds, transform: nil)
             item.opacity = 0
             item.isHidden = true
             item.zPosition = 5
@@ -336,7 +340,7 @@ final class OrbFanView: NSView {
             icon.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
             icon.contentsGravity = .center
             if let sym = NSImage(systemSymbolName: symbol(w), accessibilityDescription: nil) {
-                let conf = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
+                let conf = NSImage.SymbolConfiguration(pointSize: 13, weight: .light)
                 icon.contents = sym.withSymbolConfiguration(conf) ?? sym
             }
             icon.opacity = 0
@@ -366,11 +370,11 @@ final class OrbFanView: NSView {
             badge.cornerRadius = 6
             badge.masksToBounds = true
             badge.contentsScale = NSScreen.main?.backingScaleFactor ?? 2
-            badge.frame = CGRect(x: cx + 10, y: cy + 10, width: 22, height: 12)
+            badge.frame = CGRect(x: 33, y: 33, width: 22, height: 12)
             badge.string = ""
             badge.isHidden = true
             badge.zPosition = 7
-            layer?.addSublayer(badge)
+            item.addSublayer(badge)
             badgeLayers.append(badge)
         }
         refreshBadges()
@@ -418,24 +422,25 @@ final class OrbFanView: NSView {
             for i in start..<end {
                 let rank = start + end - 1 - i
                 for (layer, opacity) in [(itemLayers[i], Float(1)), (iconLayers[i], Float(1)), (labelLayers[i], Float(0.9))] {
+                    let currentOpacity = layer.presentation()?.opacity ?? layer.opacity
+                    let currentScale = layer.presentation()?.value(forKeyPath: "transform.scale") as? CGFloat ?? (layer.isHidden ? 0.8 : 1)
                     layer.removeAnimation(forKey: "orb-reveal")
-                    layer.isHidden = !v
+                    layer.isHidden = false
                     layer.opacity = v ? opacity : 0
-                    if v {
-                        let fade = CABasicAnimation(keyPath: "opacity")
-                        fade.fromValue = 0
-                        fade.toValue = opacity
-                        let scale = CABasicAnimation(keyPath: "transform.scale")
-                        scale.fromValue = 0.8
-                        scale.toValue = 1
-                        let reveal = CAAnimationGroup()
-                        reveal.animations = [fade, scale]
-                        reveal.duration = 0.28
-                        reveal.beginTime = layer.convertTime(now, from: nil) + Double(rank) * 0.045
-                        reveal.fillMode = .backwards
-                        reveal.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                        layer.add(reveal, forKey: "orb-reveal")
-                    }
+                    let fade = CABasicAnimation(keyPath: "opacity")
+                    fade.fromValue = currentOpacity
+                    fade.toValue = v ? opacity : 0
+                    let scale = CABasicAnimation(keyPath: "transform.scale")
+                    scale.fromValue = currentScale
+                    scale.toValue = v ? 1 : 0.8
+                    let reveal = CAAnimationGroup()
+                    reveal.animations = [fade, scale]
+                    reveal.duration = v ? 0.28 : 0.2
+                    let sequence = v ? rank : positions.count - 1 - rank
+                    reveal.beginTime = layer.convertTime(now, from: nil) + Double(sequence) * 0.045
+                    reveal.fillMode = .backwards
+                    reveal.timingFunction = CAMediaTimingFunction(name: v ? .easeOut : .easeIn)
+                    layer.add(reveal, forKey: "orb-reveal")
                 }
             }
             start = end
@@ -482,6 +487,7 @@ final class OrbFanView: NSView {
 
     // 클릭 → 위젯 팝오버
     override func mouseDown(with event: NSEvent) {
+        guard expanded else { return }
         let p = convert(event.locationInWindow, from: nil)
         if duDebug { NSLog("[orb] mouseDown at %@ items=%d", NSStringFromPoint(p), widgets.count) }
         let cx = p.x, cy = frame.height - p.y // CSS 좌표

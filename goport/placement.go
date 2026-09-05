@@ -119,6 +119,9 @@ func orbCircleCenter(rect Rect, i, count int) (float64, float64) {
 				if n > 1 {
 					deg = ring.from + (ring.to-ring.from)*float64(j)/float64(n-1)
 				}
+				if ring.r == 240 {
+					deg = 172 - float64(n-1-j)*25
+				}
 				rad := deg * math.Pi / 180
 				return rect.X + geoX + ring.r*math.Cos(rad),
 					rect.Y + geoY + ring.r*math.Sin(rad)
